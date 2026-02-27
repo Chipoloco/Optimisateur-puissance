@@ -1,5 +1,5 @@
 """
-Optimisateur de Puissance Souscrite TURPE 7
+Optimisateur de Facture électrique
 Interface Streamlit — Enedis uniquement
 """
 
@@ -26,10 +26,10 @@ from turpe_engine import (
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-st.set_page_config(page_title="Optimisateur Facture Électrique", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="Optimisateur de Facture Électrique", page_icon="⚡", layout="wide")
 
 st.title("⚡ Optimisateur de Facture Électrique")
-st.caption("TURPE 7 + CTA — Enedis | Délibération CRE n°2025-78 | En vigueur au 1er février 2026")
+st.caption("TURPE 7 + CTA — Réseau Enedis | Tarifs en vigueur au 1er février 2026 | Montants HT")
 st.divider()
 
 COULEURS_PLAGES = {
@@ -122,7 +122,7 @@ def _mpl_projection(nb_annees, eco_annuelle) -> bytes:
 # HELPER : génération PDF avec reportlab
 # ─────────────────────────────────────────────
 def generer_pdf(
-    df_raw, df, domaine, fta, type_contrat,
+    df_raw, df, nom_etude, domaine, fta, type_contrat,
     hc_debut, hc_fin,
     ps_actuelles, resultat_actuel, resultat_optimal,
     economie, economie_pct, economie_cta, economie_cta_pct,
@@ -136,7 +136,7 @@ def generer_pdf(
         SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
         Image as RLImage, HRFlowable, PageBreak,
     )
-    from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_RIGHT
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -150,160 +150,146 @@ def generer_pdf(
 
     # ── Styles ────────────────────────────────────────────────────────────────
     styles = getSampleStyleSheet()
-    BLEU   = colors.HexColor("#1565C0")
-    GRIS   = colors.HexColor("#F5F5F5")
-    VERT   = colors.HexColor("#2E7D32")
-    ROUGE  = colors.HexColor("#C62828")
+    BLEU  = colors.HexColor("#1565C0")
+    GRIS  = colors.HexColor("#F5F5F5")
+    VERT  = colors.HexColor("#2E7D32")
+    ROUGE = colors.HexColor("#C62828")
 
-    s_titre      = ParagraphStyle("titre",   fontSize=18, textColor=BLEU,   spaceAfter=4,  fontName="Helvetica-Bold")
-    s_sous_titre = ParagraphStyle("soustitre", fontSize=10, textColor=colors.HexColor("#455A64"), spaceAfter=12, fontName="Helvetica")
-    s_h2         = ParagraphStyle("h2",      fontSize=12, textColor=BLEU,   spaceBefore=14, spaceAfter=6, fontName="Helvetica-Bold")
-    s_normal     = ParagraphStyle("normal",  fontSize=9,  textColor=colors.black, spaceAfter=4, fontName="Helvetica")
-    s_date       = ParagraphStyle("date",    fontSize=8,  textColor=colors.HexColor("#78909C"), alignment=TA_RIGHT, fontName="Helvetica")
-    s_kpi_label  = ParagraphStyle("kpilbl",  fontSize=8,  textColor=colors.HexColor("#546E7A"), alignment=TA_CENTER, fontName="Helvetica")
-    s_kpi_val    = ParagraphStyle("kpival",  fontSize=16, textColor=BLEU, alignment=TA_CENTER, fontName="Helvetica-Bold")
-    s_kpi_eco    = ParagraphStyle("kpieco",  fontSize=16, textColor=VERT, alignment=TA_CENTER, fontName="Helvetica-Bold")
+    s_titre      = ParagraphStyle("titre",    fontSize=18, textColor=BLEU,  spaceAfter=2,  fontName="Helvetica-Bold")
+    s_sous_titre = ParagraphStyle("soustitre",fontSize=9,  textColor=colors.HexColor("#455A64"), spaceAfter=10, fontName="Helvetica")
+    s_h2         = ParagraphStyle("h2",       fontSize=11, textColor=BLEU,  spaceBefore=12, spaceAfter=5, fontName="Helvetica-Bold")
+    s_date       = ParagraphStyle("date",     fontSize=8,  textColor=colors.HexColor("#78909C"), alignment=TA_RIGHT, fontName="Helvetica")
+    s_kpi_label  = ParagraphStyle("kpilbl",   fontSize=8,  textColor=colors.HexColor("#546E7A"), alignment=TA_CENTER, fontName="Helvetica")
+    s_kpi_val    = ParagraphStyle("kpival",   fontSize=15, textColor=BLEU,  alignment=TA_CENTER, fontName="Helvetica-Bold")
+    s_kpi_eco    = ParagraphStyle("kpieco",   fontSize=15, textColor=VERT,  alignment=TA_CENTER, fontName="Helvetica-Bold")
+    s_kpi_neg    = ParagraphStyle("kpineg",   fontSize=15, textColor=ROUGE, alignment=TA_CENTER, fontName="Helvetica-Bold")
+    s_cell       = ParagraphStyle("cell",     fontSize=8,  fontName="Helvetica", wordWrap="CJK")
+    s_cell_bold  = ParagraphStyle("cellbold", fontSize=8,  fontName="Helvetica-Bold", wordWrap="CJK")
+    s_footer     = ParagraphStyle("footer",   fontSize=7,  textColor=colors.HexColor("#90A4AE"), alignment=TA_CENTER, fontName="Helvetica")
 
     story = []
 
     # ── EN-TÊTE ───────────────────────────────────────────────────────────────
-    story.append(Paragraph(f"Rapport d'optimisation Facture Électrique", s_titre))
+    story.append(Paragraph(nom_etude, s_titre))
     story.append(Paragraph(
-        f"Analyse de la puissance souscrite — {domaine} | {fta} | {type_contrat.replace('_', ' ').title()}",
+        f"Optimisation TURPE 7 + CTA — {domaine} | FTA : {fta} | {type_contrat.replace('_', ' ').title()} — Montants HT",
         s_sous_titre
     ))
-    story.append(Paragraph(f"Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}", s_date))
-    story.append(HRFlowable(width="100%", thickness=2, color=BLEU, spaceAfter=12))
+    story.append(Paragraph(f"Rapport du {datetime.now().strftime('%d/%m/%Y')}", s_date))
+    story.append(HRFlowable(width="100%", thickness=2, color=BLEU, spaceAfter=10))
 
-    # ── INFOS SITE ─────────────────────────────────────────────────────────────
+    # ── INFOS SITE ────────────────────────────────────────────────────────────
     story.append(Paragraph("Informations du site", s_h2))
     nb_jours = df_raw.attrs.get("nb_jours", 365)
-    hc_str = f"{hc_debut}h → {hc_fin}h"
+    debut_str = df_raw.attrs.get("periode_debut", "?")
+    fin_str   = df_raw.attrs.get("periode_fin",   "?")
+    debut_str = debut_str.strftime("%d/%m/%Y") if hasattr(debut_str, "strftime") else str(debut_str)[:10]
+    fin_str   = fin_str.strftime("%d/%m/%Y")   if hasattr(fin_str,   "strftime") else str(fin_str)[:10]
+
     data_site = [
-        ["PRM", str(df_raw.attrs.get("prm", "—")), "Période analysée",
-         f"{df_raw.attrs.get('periode_debut','?').strftime('%d/%m/%Y') if hasattr(df_raw.attrs.get('periode_debut','?'),'strftime') else str(df_raw.attrs.get('periode_debut','?'))[:10]} → {df_raw.attrs.get('periode_fin','?').strftime('%d/%m/%Y') if hasattr(df_raw.attrs.get('periode_fin','?'),'strftime') else str(df_raw.attrs.get('periode_fin','?'))[:10]}"],
-        ["Durée fichier", f"{nb_jours} jours ({round(nb_jours/365*100,1)} %)", "Plages HC", hc_str],
-        ["Puissance max observée", f"{round(df['puissance_kw'].max(),1)} kW", "Puissance moyenne", f"{round(df['puissance_kw'].mean(),1)} kW"],
+        ["PRM",            str(df_raw.attrs.get("prm", "—")),            "Période analysée", f"{debut_str} → {fin_str}"],
+        ["Durée fichier",  f"{nb_jours} j ({round(nb_jours/365*100,1)} %)", "Plages HC",     f"{hc_debut}h → {hc_fin}h (7j/7)"],
+        ["Puissance max",  f"{round(df['puissance_kw'].max(),1)} kW",    "Puissance moy.",   f"{round(df['puissance_kw'].mean(),1)} kW"],
     ]
-    t_site = Table(data_site, colWidths=[3.5*cm, 5.5*cm, 3.5*cm, 5.5*cm])
+    t_site = Table(data_site, colWidths=[3*cm, 5.5*cm, 3*cm, 5.5*cm])
     t_site.setStyle(TableStyle([
-        ("FONTNAME", (0,0), (-1,-1), "Helvetica"),
-        ("FONTSIZE", (0,0), (-1,-1), 8),
-        ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
-        ("FONTNAME", (2,0), (2,-1), "Helvetica-Bold"),
-        ("BACKGROUND", (0,0), (-1,-1), GRIS),
+        ("FONTNAME",  (0,0), (-1,-1), "Helvetica"),
+        ("FONTNAME",  (0,0), (0,-1),  "Helvetica-Bold"),
+        ("FONTNAME",  (2,0), (2,-1),  "Helvetica-Bold"),
+        ("FONTSIZE",  (0,0), (-1,-1), 8),
         ("ROWBACKGROUNDS", (0,0), (-1,-1), [colors.white, GRIS]),
-        ("GRID", (0,0), (-1,-1), 0.3, colors.HexColor("#CFD8DC")),
-        ("TOPPADDING", (0,0), (-1,-1), 5),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+        ("GRID",      (0,0), (-1,-1), 0.3, colors.HexColor("#CFD8DC")),
+        ("TOPPADDING",    (0,0), (-1,-1), 4),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
     ]))
     story.append(t_site)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 8))
 
-    # ── KPIs ──────────────────────────────────────────────────────────────────
-    story.append(Paragraph("Résultats de l'optimisation", s_h2))
-
-    signe = "-" if economie_cta >= 0 else "+"
-    kpi_data = [[
-        Paragraph("Coût TURPE actuel", s_kpi_label),
-        Paragraph("Coût TURPE optimisé", s_kpi_label),
-        Paragraph("Économie TURPE+CTA", s_kpi_label),
-        Paragraph("Gain relatif", s_kpi_label),
-    ],[
-        Paragraph(f"{resultat_actuel['Total']:,.0f} €/an", s_kpi_val),
-        Paragraph(f"{resultat_optimal['Total']:,.0f} €/an", s_kpi_val),
-        Paragraph(f"{signe}{abs(economie_cta):,.0f} €/an", s_kpi_eco if economie_cta >= 0 else ParagraphStyle("r", fontSize=16, textColor=ROUGE, alignment=1, fontName="Helvetica-Bold")),
-        Paragraph(f"{economie_cta_pct:.1f} %", s_kpi_eco if economie_cta >= 0 else ParagraphStyle("r", fontSize=16, textColor=ROUGE, alignment=1, fontName="Helvetica-Bold")),
-    ]]
+    # ── KPIs ─────────────────────────────────────────────────────────────────
+    story.append(Paragraph("Résultats de l'optimisation (TURPE + CTA — HT)", s_h2))
+    s_eco = s_kpi_eco if economie_cta >= 0 else s_kpi_neg
+    kpi_data = [
+        [Paragraph("Coût actuel HT",   s_kpi_label), Paragraph("Coût optimisé HT", s_kpi_label),
+         Paragraph("Économie HT/an",   s_kpi_label), Paragraph("Gain relatif",     s_kpi_label)],
+        [Paragraph(f"{resultat_actuel['Total_HT']:,.0f} €/an",  s_kpi_val),
+         Paragraph(f"{resultat_optimal['Total_HT']:,.0f} €/an", s_kpi_val),
+         Paragraph(f"{'-' if economie_cta>=0 else '+'}{abs(economie_cta):,.0f} €/an", s_eco),
+         Paragraph(f"{economie_cta_pct:.1f} %", s_eco)],
+    ]
     t_kpi = Table(kpi_data, colWidths=[content_w/4]*4)
     t_kpi.setStyle(TableStyle([
-        ("BOX", (0,0), (-1,-1), 1, BLEU),
-        ("INNERGRID", (0,0), (-1,-1), 0.5, colors.HexColor("#CFD8DC")),
-        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#E3F2FD")),
-        ("TOPPADDING", (0,0), (-1,-1), 8),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+        ("BOX",        (0,0), (-1,-1), 1, BLEU),
+        ("INNERGRID",  (0,0), (-1,-1), 0.5, colors.HexColor("#CFD8DC")),
+        ("BACKGROUND", (0,0), (-1,0),  colors.HexColor("#E3F2FD")),
+        ("TOPPADDING",    (0,0), (-1,-1), 7),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 7),
     ]))
     story.append(t_kpi)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 8))
 
-    # ── TABLEAU PS ────────────────────────────────────────────────────────────
-    story.append(Paragraph("Puissances souscrites recommandées", s_h2))
-
-    plages_list = list(ps_actuelles.keys())
-    ps_opt = resultat_optimal["puissances_souscrites"]
-    headers = ["Plage", "PS actuelle (kVA)", "PS optimisée (kVA)", "Écart (kVA)"]
-    rows = [headers]
-    for p in plages_list:
+    # ── TABLEAU PS ───────────────────────────────────────────────────────────
+    story.append(Paragraph("Puissances souscrites recommandées (kVA)", s_h2))
+    ps_opt   = resultat_optimal["puissances_souscrites"]
+    rows_ps  = [[Paragraph(h, s_cell_bold) for h in ["Plage", "Actuelle (kVA)", "Optimisée (kVA)", "Écart (kVA)"]]]
+    for p in ps_actuelles:
         ecart = ps_opt.get(p, 0) - ps_actuelles[p]
-        rows.append([
-            p,
-            str(ps_actuelles[p]),
-            str(ps_opt.get(p, "—")),
-            f"{'+' if ecart > 0 else ''}{ecart}",
+        couleur_ecart = VERT if ecart < 0 else (ROUGE if ecart > 0 else colors.black)
+        rows_ps.append([
+            Paragraph(p, s_cell_bold),
+            Paragraph(str(ps_actuelles[p]), s_cell),
+            Paragraph(str(ps_opt.get(p, "—")), s_cell),
+            Paragraph(f"{'+' if ecart > 0 else ''}{ecart}", ParagraphStyle("e", fontSize=8, textColor=couleur_ecart, fontName="Helvetica-Bold")),
+        ])
+    t_ps = Table(rows_ps, colWidths=[3*cm, 3.5*cm, 3.5*cm, 3.5*cm])
+    t_ps.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), BLEU),
+        ("TEXTCOLOR",  (0,0), (-1,0), colors.white),
+        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, GRIS]),
+        ("GRID",       (0,0), (-1,-1), 0.3, colors.HexColor("#CFD8DC")),
+        ("ALIGN",      (1,0), (-1,-1), "CENTER"),
+        ("TOPPADDING",    (0,0), (-1,-1), 4),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+    ]))
+    story.append(t_ps)
+    story.append(Spacer(1, 8))
+
+    # ── TABLEAU COMPOSANTES (sans colonne description) ────────────────────────
+    story.append(Paragraph("Détail des composantes TURPE + CTA — HT (€/an annualisés)", s_h2))
+    compo_list = ["CG", "CC", "CS", "CMDPS", "CTA_HT", "Total_HT"]
+    labels_compo = {"CG": "Gestion (CG)", "CC": "Comptage (CC)", "CS": "Soutirage (CS)",
+                    "CMDPS": "Dépassement (CMDPS)", "CTA_HT": "CTA HT (15 %)", "Total_HT": "TOTAL HT"}
+    rows_c = [[Paragraph(h, s_cell_bold) for h in ["Composante", "Actuel (€/an HT)", "Optimisé (€/an HT)", "Écart (€/an HT)"]]]
+    for c in compo_list:
+        act     = resultat_actuel.get(c, 0)
+        opt     = resultat_optimal.get(c, 0)
+        ecart_c = opt - act
+        is_total = c == "Total_HT"
+        style_lbl = s_cell_bold if is_total else s_cell
+        rows_c.append([
+            Paragraph(labels_compo[c], style_lbl),
+            Paragraph(f"{act:,.0f}", style_lbl),
+            Paragraph(f"{opt:,.0f}", style_lbl),
+            Paragraph(f"{'+' if ecart_c > 0 else ''}{ecart_c:,.0f}", style_lbl),
         ])
 
-    t_ps = Table(rows, colWidths=[3*cm, 4*cm, 4*cm, 4*cm])
-    style_ps = [
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ("FONTSIZE", (0,0), (-1,-1), 9),
-        ("BACKGROUND", (0,0), (-1,0), BLEU),
-        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+    t_comp = Table(rows_c, colWidths=[4*cm, 3.5*cm, 3.5*cm, 3.5*cm])
+    style_comp = [
+        ("BACKGROUND",  (0,0), (-1,0),  BLEU),
+        ("TEXTCOLOR",   (0,0), (-1,0),  colors.white),
         ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, GRIS]),
-        ("GRID", (0,0), (-1,-1), 0.3, colors.HexColor("#CFD8DC")),
-        ("ALIGN", (1,0), (-1,-1), "CENTER"),
-        ("TOPPADDING", (0,0), (-1,-1), 5),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
-    ]
-    for i, p in enumerate(plages_list, 1):
-        ecart = ps_opt.get(p, 0) - ps_actuelles[p]
-        if ecart < 0:
-            style_ps.append(("TEXTCOLOR", (3, i), (3, i), VERT))
-            style_ps.append(("FONTNAME", (3, i), (3, i), "Helvetica-Bold"))
-        elif ecart > 0:
-            style_ps.append(("TEXTCOLOR", (3, i), (3, i), ROUGE))
-    t_ps.setStyle(TableStyle(style_ps))
-    story.append(t_ps)
-    story.append(Spacer(1, 10))
-
-    # ── TABLEAU COMPOSANTES ───────────────────────────────────────────────────
-    story.append(Paragraph("Détail des composantes TURPE + CTA (€/an annualisés)", s_h2))
-    composantes_pdf_tbl = ["CG", "CC", "CS", "CMDPS", "CTA_TTC", "Total_avec_CTA"]
-    headers_c = ["Composante", "Description", "Actuel (€/an)", "Optimisé (€/an)", "Écart (€/an)"]
-    desc_pdf = {
-        "CG": "Composante de gestion", "CC": "Composante de comptage",
-        "CS": "Composante de soutirage", "CMDPS": "Dépassement de puissance",
-        "CTA_TTC": "CTA TTC (15% × part fixe + TVA 20%)",
-        "Total_avec_CTA": "TOTAL TURPE + CTA",
-    }
-    rows_c = [headers_c]
-    for c in composantes_pdf_tbl:
-        lbl = desc_pdf.get(c, c)
-        act = resultat_actuel.get(c, 0)
-        opt = resultat_optimal.get(c, 0)
-        ecart_c = opt - act
-        rows_c.append([lbl[:28], desc_pdf.get(c, "")[:35], f"{act:,.0f}", f"{opt:,.0f}",
-                       f"{'+' if ecart_c > 0 else ''}{ecart_c:,.0f}"])
-
-    t_comp = Table(rows_c, colWidths=[3*cm, 5*cm, 2.8*cm, 2.8*cm, 2.8*cm])
-    style_c = [
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ("FONTSIZE", (0,0), (-1,-1), 8),
-        ("BACKGROUND", (0,0), (-1,0), BLEU),
-        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, GRIS]),
-        ("FONTNAME", (0, len(composantes_pdf_tbl)), (-1, len(composantes_pdf_tbl)), "Helvetica-Bold"),
-        ("BACKGROUND", (0, len(composantes_pdf_tbl)), (-1, len(composantes_pdf_tbl)), colors.HexColor("#E3F2FD")),
-        ("GRID", (0,0), (-1,-1), 0.3, colors.HexColor("#CFD8DC")),
-        ("ALIGN", (2,0), (-1,-1), "RIGHT"),
-        ("TOPPADDING", (0,0), (-1,-1), 4),
+        ("BACKGROUND",  (0, len(compo_list)), (-1, len(compo_list)), colors.HexColor("#E3F2FD")),
+        ("GRID",        (0,0), (-1,-1), 0.3, colors.HexColor("#CFD8DC")),
+        ("ALIGN",       (1,0), (-1,-1), "RIGHT"),
+        ("TOPPADDING",    (0,0), (-1,-1), 4),
         ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+        ("VALIGN",      (0,0), (-1,-1), "MIDDLE"),
     ]
-    t_comp.setStyle(TableStyle(style_c))
+    t_comp.setStyle(TableStyle(style_comp))
     story.append(t_comp)
 
     # ── GRAPHIQUES ────────────────────────────────────────────────────────────
     story.append(PageBreak())
-    story.append(Paragraph(f"Rapport d'optimisation Facture Électrique — {datetime.now().strftime('%d/%m/%Y')}", s_date))
+    story.append(Paragraph(f"{nom_etude} — {datetime.now().strftime('%d/%m/%Y')}", s_date))
     story.append(HRFlowable(width="100%", thickness=1, color=BLEU, spaceAfter=8))
 
     story.append(Paragraph("Courbe de charge par plage horosaisonnière", s_h2))
@@ -311,27 +297,27 @@ def generer_pdf(
     story.append(RLImage(io.BytesIO(png_courbe), width=content_w, height=content_w*3.2/9))
     story.append(Spacer(1, 8))
 
-    story.append(Paragraph("Composantes TURPE + CTA : actuel vs optimisé", s_h2))
-    composantes_graph = ["CG", "CC", "CS", "CMDPS", "CTA_TTC"]
-    labels_graph_pdf  = ["Gestion", "Comptage", "Soutirage", "Dépassement", "CTA TTC"]
+    story.append(Paragraph("TURPE + CTA HT annualisé : actuel vs optimisé par composante", s_h2))
+    compo_graph_pdf   = ["CG", "CC", "CS", "CMDPS", "CTA_HT"]
+    labels_graph_pdf  = ["Gestion", "Comptage", "Soutirage", "Dépassement", "CTA HT"]
     png_compo = _mpl_composantes(
         labels_graph_pdf,
-        [resultat_actuel[c]  for c in composantes_graph],
-        [resultat_optimal[c] for c in composantes_graph],
+        [resultat_actuel[c]  for c in compo_graph_pdf],
+        [resultat_optimal[c] for c in compo_graph_pdf],
     )
     story.append(RLImage(io.BytesIO(png_compo), width=content_w, height=content_w*3.0/9))
     story.append(Spacer(1, 8))
 
-    story.append(Paragraph(f"Projection des économies sur {nb_annees} ans", s_h2))
-    png_proj = _mpl_projection(nb_annees, max(0, economie))
+    story.append(Paragraph(f"Économie annuelle HT — cumul sur {nb_annees} ans : {max(0, economie_cta) * nb_annees:,.0f} €", s_h2))
+    png_proj = _mpl_projection(nb_annees, max(0, economie_cta))
     story.append(RLImage(io.BytesIO(png_proj), width=content_w, height=content_w*3.0/9))
 
-    # ── PIED DE PAGE ──────────────────────────────────────────────────────────
-    story.append(Spacer(1, 16))
+    # ── PIED DE PAGE ─────────────────────────────────────────────────────────
+    story.append(Spacer(1, 14))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#B0BEC5")))
     story.append(Paragraph(
-        "Tarifs TURPE 7 en vigueur au 1er août 2025 — Délibération CRE n°2025-78 — Réseau Enedis uniquement — Coûts exprimés en €/an annualisés",
-        ParagraphStyle("footer", fontSize=7, textColor=colors.HexColor("#90A4AE"), alignment=TA_CENTER, fontName="Helvetica")
+        "TURPE 7 + CTA — Réseau Enedis — Tarifs au 1er février 2026 — Délibération CRE n°2025-78 — Montants hors TVA (HT)",
+        s_footer
     ))
 
     doc.build(story)
@@ -343,6 +329,9 @@ def generer_pdf(
 # ─────────────────────────────────────────────
 with st.sidebar:
     st.header("🔧 Paramétrage")
+
+    nom_etude = st.text_input("Nom de l'étude", value="Étude d'optimisation",
+                              help="Apparaîtra en titre sur le rapport PDF")
 
     domaine = st.selectbox("Domaine de tension", ["HTA", "BT > 36 kVA", "BT ≤ 36 kVA"])
 
@@ -525,15 +514,15 @@ with st.spinner("⏳ Optimisation en cours..."):
     )
 
 economie         = resultat_actuel["Total"] - resultat_optimal["Total"]
-economie_cta     = resultat_actuel["Total_avec_CTA"] - resultat_optimal["Total_avec_CTA"]
+economie_cta     = resultat_actuel["Total_HT"] - resultat_optimal["Total_HT"]
 economie_pct     = (economie / resultat_actuel["Total"] * 100) if resultat_actuel["Total"] > 0 else 0
-economie_cta_pct = (economie_cta / resultat_actuel["Total_avec_CTA"] * 100) if resultat_actuel["Total_avec_CTA"] > 0 else 0
+economie_cta_pct = (economie_cta / resultat_actuel["Total_HT"] * 100) if resultat_actuel["Total_HT"] > 0 else 0
 
-# KPIs uniques : TURPE + CTA
+# KPIs — TURPE + CTA HT
 c1, c2, c3 = st.columns(3)
-c1.metric("💰 Facture d'acheminement & CTA actuelle",  f"{resultat_actuel['Total_avec_CTA']:,.0f} €/an")
-c2.metric("✅ Facture d'acheminement & CTA optimisée", f"{resultat_optimal['Total_avec_CTA']:,.0f} €/an", delta=f"-{economie_cta:,.0f} €")
-c3.metric("📉 Économie annuelle potentielle",     f"{economie_cta:,.0f} €/an", delta=f"{economie_cta_pct:.1f} %")
+c1.metric("💰 Coût TURPE + CTA actuel (HT)", f"{resultat_actuel['Total_HT']:,.0f} €/an")
+c2.metric("✅ Coût TURPE + CTA optimisé (HT)", f"{resultat_optimal['Total_HT']:,.0f} €/an", delta=f"-{economie_cta:,.0f} €")
+c3.metric("📉 Économie annuelle potentielle (HT)", f"{economie_cta:,.0f} €/an", delta=f"{economie_cta_pct:.1f} %")
 
 st.divider()
 
@@ -555,15 +544,21 @@ st.dataframe(df_comp.style.map(style_ecart, subset=["Écart (kVA)"]),
              use_container_width=True, hide_index=True)
 
 # ── Composantes ───────────────────────────────────────────────────────────────
-st.subheader("🔍 Détail des composantes (€/an annualisés)")
-composantes = ["CG", "CC", "CS", "CMDPS", "CTA_TTC"]
-labels_comp = {"CG": "Gestion", "CC": "Comptage", "CS": "Soutirage", "CMDPS": "Dépassement", "CTA_TTC": "CTA TTC (15%+TVA)"}
+st.subheader("🔍 Détail des composantes TURPE + CTA — HT (€/an annualisés)")
+composantes  = ["CG", "CC", "CS", "CMDPS", "CTA_HT"]
+labels_comp  = {
+    "CG":     "Gestion (CG)",
+    "CC":     "Comptage (CC)",
+    "CS":     "Soutirage (CS)",
+    "CMDPS":  "Dépassement (CMDPS)",
+    "CTA_HT": "CTA HT (15 % × CG+CC+CS fixe)",
+}
 df_compo_tab = pd.DataFrame({
     "Composante":       [labels_comp[c] for c in composantes],
-    "Actuel (€/an)":   [resultat_actuel[c]  for c in composantes],
-    "Optimisé (€/an)": [resultat_optimal[c] for c in composantes],
+    "Actuel (€/an HT)":   [resultat_actuel[c]  for c in composantes],
+    "Optimisé (€/an HT)": [resultat_optimal[c] for c in composantes],
 })
-df_compo_tab["Écart (€/an)"] = df_compo_tab["Optimisé (€/an)"] - df_compo_tab["Actuel (€/an)"]
+df_compo_tab["Écart (€/an HT)"] = df_compo_tab["Optimisé (€/an HT)"] - df_compo_tab["Actuel (€/an HT)"]
 
 col_tab, col_chart = st.columns(2)
 with col_tab:
@@ -574,8 +569,8 @@ with col_chart:
         go.Bar(name="Actuel",   x=labels_graph, y=[resultat_actuel[c]  for c in composantes], marker_color="#FF6B6B"),
         go.Bar(name="Optimisé", x=labels_graph, y=[resultat_optimal[c] for c in composantes], marker_color="#4CAF50"),
     ])
-    fig_compo.update_layout(barmode="group", title="Composantes : actuel vs optimisé (avec CTA)",
-                            yaxis_title="€/an", height=300)
+    fig_compo.update_layout(barmode="group", title="TURPE + CTA HT : actuel vs optimisé",
+                            yaxis_title="€/an HT", height=300)
     st.plotly_chart(fig_compo, use_container_width=True)
 
 # ── Courbe avec seuils ────────────────────────────────────────────────────────
@@ -621,9 +616,9 @@ if "plage_variee" in df_scenarios.columns:
                 annotation_font_size=9,
             )
         fig_sens.update_layout(
-            title="Sensibilité du coût annuel — toutes plages superposées",
+            title="Sensibilité du coût TURPE HT — toutes plages superposées",
             xaxis_title="Puissance souscrite (kVA)",
-            yaxis_title="Coût TURPE annualisé (€/an)",
+            yaxis_title="Coût TURPE HT annualisé (€/an)",
             height=400,
             legend=dict(orientation="h", yanchor="bottom", y=1.02),
         )
@@ -653,44 +648,38 @@ st.divider()
 # ─────────────────────────────────────────────
 # PROJECTION PLURIANNUELLE
 # ─────────────────────────────────────────────
-st.header("📆 Projection des gains sur plusieurs années")
+st.header("📆 Gains annuels et projection")
 
 col_proj1, col_proj2 = st.columns([1, 3])
 with col_proj1:
-    nb_annees = st.slider("Horizon (années)", 1, 20, 10)
+    nb_annees        = st.slider("Horizon (années)", 1, 20, 10)
+    eco_cta_annuelle = max(0, economie_cta)
 
 with col_proj2:
-    annees           = list(range(1, nb_annees + 1))
-    eco_annuelle     = max(0, economie)
-    eco_cta_annuelle = max(0, economie_cta)
-    eco_cumul        = [eco_cta_annuelle * a for a in annees]
+    # Graphique : coût annuel actuel vs optimisé par composante (1 an, annualisé)
+    compo_graph  = ["CG", "CC", "CS", "CMDPS", "CTA_HT"]
+    labels_proj  = ["Gestion", "Comptage", "Soutirage", "Dépassement", "CTA HT"]
+    vals_act     = [resultat_actuel[c]  for c in compo_graph]
+    vals_opt     = [resultat_optimal[c] for c in compo_graph]
 
-    fig_projection = go.Figure()
-    fig_projection.add_trace(go.Bar(
-        x=annees, y=[eco_cta_annuelle] * nb_annees,
-        name="Économie annuelle (TURPE + CTA)",
-        marker_color="#4CAF50", opacity=0.7,
-    ))
-    fig_projection.add_trace(go.Scatter(
-        x=annees, y=eco_cumul,
-        mode="lines+markers", name="Cumul",
-        line=dict(color="#1565C0", width=2), yaxis="y2",
-    ))
+    fig_projection = go.Figure(data=[
+        go.Bar(name="Actuel",   x=labels_proj, y=vals_act, marker_color="#FF6B6B"),
+        go.Bar(name="Optimisé", x=labels_proj, y=vals_opt, marker_color="#4CAF50"),
+    ])
     fig_projection.update_layout(
-        title=f"Projection des économies sur {nb_annees} ans (TURPE + CTA)",
-        xaxis=dict(title="Année", tickmode="linear", dtick=1),
-        yaxis=dict(title="Économie annuelle (€)", side="left"),
-        yaxis2=dict(title="Économie cumulée (€)", overlaying="y", side="right"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        barmode="group",
+        title="Coût annuel TURPE + CTA HT : actuel vs optimisé (annualisé sur 12 mois)",
+        yaxis_title="€/an HT",
         height=380,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
     )
     st.plotly_chart(fig_projection, use_container_width=True)
 
     if eco_cta_annuelle > 0:
         c1, c2, c3 = st.columns(3)
-        c1.metric("Économie TURPE seul",             f"{eco_annuelle:,.0f} €/an")
-        c2.metric("Économie TURPE + CTA",            f"{eco_cta_annuelle:,.0f} €/an")
-        c3.metric(f"Cumul sur {nb_annees} ans",      f"{eco_cumul[-1]:,.0f} €")
+        c1.metric("Économie annuelle HT",           f"{eco_cta_annuelle:,.0f} €/an")
+        c2.metric(f"Cumul sur {nb_annees} ans",     f"{eco_cta_annuelle * nb_annees:,.0f} €")
+        c3.metric("Gain relatif",                   f"{economie_cta_pct:.1f} %")
 
 st.divider()
 
@@ -704,21 +693,23 @@ col_dl1, col_dl2, col_dl3 = st.columns(3)
 # CSV synthèse
 rapport = pd.DataFrame({
     "Paramètre": [
-        "Format fichier", "Domaine", "FTA", "Contrat",
+        "Nom de l'étude", "Format fichier", "Domaine", "FTA", "Contrat",
         "HC début", "HC fin",
-        "PRM", "Période", "Durée (jours)", "Couverture",
-        "Coût actuel (€/an)", "Coût optimisé (€/an)", "Économie (€/an)", "Économie (%)",
+        "PRM", "Période", "Durée (jours)", "Couverture annuelle",
+        "Coût TURPE+CTA actuel HT (€/an)", "Coût TURPE+CTA optimisé HT (€/an)",
+        "Économie HT (€/an)", "Économie (%)",
     ],
     "Valeur": [
+        nom_etude,
         st.session_state.get("format_detecte", "?"), domaine, fta, type_contrat,
         f"{hc_debut}h", f"{hc_fin}h",
         df_raw.attrs.get("prm", "?"),
         f"{df_raw.attrs.get('periode_debut','?')} → {df_raw.attrs.get('periode_fin','?')}",
         df_raw.attrs.get("nb_jours", "?"),
         f"{round(df_raw.attrs.get('nb_jours', 365)/365*100, 1)} %",
-        f"{resultat_actuel['Total']:,.0f} €",
-        f"{resultat_optimal['Total']:,.0f} €",
-        f"{economie:,.0f} €", f"{economie_pct:.1f} %",
+        f"{resultat_actuel['Total_HT']:,.0f} €",
+        f"{resultat_optimal['Total_HT']:,.0f} €",
+        f"{economie_cta:,.0f} €", f"{economie_cta_pct:.1f} %",
     ]
 })
 for plage in ps_actuelles:
@@ -746,6 +737,7 @@ with col_dl3:
             try:
                 pdf_bytes = generer_pdf(
                     df_raw=df_raw, df=df,
+                    nom_etude=nom_etude,
                     domaine=domaine, fta=fta, type_contrat=type_contrat,
                     hc_debut=hc_debut, hc_fin=hc_fin,
                     ps_actuelles=ps_actuelles,
@@ -769,4 +761,4 @@ with col_dl3:
         )
 
 st.divider()
-st.caption("📌 TURPE 7 — CRE n°2025-78 — Enedis uniquement — €/an annualisés — Contrainte HPH ≤ HCH ≤ HPB ≤ HCB")
+st.caption("📌 TURPE 7 + CTA — Réseau Enedis — Tarifs au 1er février 2026 — Montants HT — Contrainte HPH ≤ HCH ≤ HPB ≤ HCB")
