@@ -395,14 +395,28 @@ def calculer_cout_total(
         cs    = cs_puissance + cs_energie
         cmdps = 0.0
 
-    total = cg + cc + cs + cmdps
+    # ── CTA (Contribution Tarifaire d'Acheminement) ───────────────────────────
+    # Taux : 15 % depuis le 1er février 2026 pour les clients Enedis (distribution)
+    # Assiette : CG + CC + CS_puissance (part fixe uniquement, hors énergie et CMDPS)
+    # TVA : 20 % sur la CTA (taux pro depuis le 1er août 2025)
+    TAUX_CTA     = 0.15
+    TAUX_TVA_CTA = 0.20
+    cta_ht       = (cg + cc + cs_puissance) * TAUX_CTA
+    cta_ttc      = cta_ht * (1 + TAUX_TVA_CTA)
+
+    total         = cg + cc + cs + cmdps
+    total_avec_cta = total + cta_ttc
 
     return {
-        "CG":                    round(cg, 2),
-        "CC":                    round(cc, 2),
-        "CS":                    round(cs, 2),
-        "CMDPS":                 round(cmdps, 2),
-        "Total":                 round(total, 2),
+        "CG":               round(cg, 2),
+        "CC":               round(cc, 2),
+        "CS":               round(cs, 2),
+        "CS_puissance":     round(cs_puissance, 2),
+        "CMDPS":            round(cmdps, 2),
+        "CTA_HT":           round(cta_ht, 2),
+        "CTA_TTC":          round(cta_ttc, 2),
+        "Total":            round(total, 2),
+        "Total_avec_CTA":   round(total_avec_cta, 2),
         "facteur_annualisation": fact_ann,
         "puissances_souscrites": puissances_souscrites,
     }
