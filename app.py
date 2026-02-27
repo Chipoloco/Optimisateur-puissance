@@ -268,7 +268,7 @@ def generer_pdf(
     # ── TABLEAU COMPOSANTES ───────────────────────────────────────────────────
     story.append(Paragraph("Détail des composantes TURPE + CTA (€/an annualisés)", s_h2))
     composantes_pdf_tbl = ["CG", "CC", "CS", "CMDPS", "CTA_TTC", "Total_avec_CTA"]
-    headers_c = ["Composante", "Actuel (€/an)", "Optimisé (€/an)", "Écart (€/an)"]
+    headers_c = ["Composante", "Description", "Actuel (€/an)", "Optimisé (€/an)", "Écart (€/an)"]
     desc_pdf = {
         "CG": "Composante de gestion", "CC": "Composante de comptage",
         "CS": "Composante de soutirage", "CMDPS": "Dépassement de puissance",
@@ -284,7 +284,7 @@ def generer_pdf(
         rows_c.append([lbl[:28], desc_pdf.get(c, "")[:35], f"{act:,.0f}", f"{opt:,.0f}",
                        f"{'+' if ecart_c > 0 else ''}{ecart_c:,.0f}"])
 
-    t_comp = Table(rows_c, colWidths=[3*cm, 2.8*cm, 2.8*cm, 2.8*cm])
+    t_comp = Table(rows_c, colWidths=[3*cm, 5*cm, 2.8*cm, 2.8*cm, 2.8*cm])
     style_c = [
         ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
         ("FONTSIZE", (0,0), (-1,-1), 8),
