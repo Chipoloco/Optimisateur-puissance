@@ -1,5 +1,5 @@
 """
-Optimisateur de Facture électrique
+Optimisateur de Puissance Facture électrique
 Interface Streamlit — Enedis uniquement
 """
 
@@ -155,8 +155,8 @@ def generer_pdf(
     VERT  = colors.HexColor("#2E7D32")
     ROUGE = colors.HexColor("#C62828")
 
-    s_titre      = ParagraphStyle("titre",    fontSize=18, textColor=BLEU,  spaceAfter=2,  fontName="Helvetica-Bold")
-    s_sous_titre = ParagraphStyle("soustitre",fontSize=9,  textColor=colors.HexColor("#455A64"), spaceAfter=10, fontName="Helvetica")
+    s_titre      = ParagraphStyle("titre",    fontSize=16, textColor=BLEU,  spaceAfter=8,  fontName="Helvetica-Bold")
+    s_sous_titre = ParagraphStyle("soustitre",fontSize=8,  textColor=colors.HexColor("#455A64"), spaceAfter=10, fontName="Helvetica")
     s_h2         = ParagraphStyle("h2",       fontSize=11, textColor=BLEU,  spaceBefore=12, spaceAfter=5, fontName="Helvetica-Bold")
     s_date       = ParagraphStyle("date",     fontSize=8,  textColor=colors.HexColor("#78909C"), alignment=TA_RIGHT, fontName="Helvetica")
     s_kpi_label  = ParagraphStyle("kpilbl",   fontSize=8,  textColor=colors.HexColor("#546E7A"), alignment=TA_CENTER, fontName="Helvetica")
