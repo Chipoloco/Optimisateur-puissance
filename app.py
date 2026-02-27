@@ -26,10 +26,10 @@ from turpe_engine import (
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-st.set_page_config(page_title="Optimisateur TURPE 7", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="Optimisateur Facture Électrique", page_icon="⚡", layout="wide")
 
-st.title("⚡ Optimisateur de Facture électrique")
-st.caption("TURPE 7 — Enedis | Délibération CRE n°2025-78 | En vigueur au 1er août 2025")
+st.title("⚡ Optimisateur de Facture Électrique")
+st.caption("TURPE 7 + CTA — Enedis | Délibération CRE n°2025-78 | En vigueur au 1er août 2025")
 st.divider()
 
 COULEURS_PLAGES = {
@@ -529,19 +529,11 @@ economie_cta     = resultat_actuel["Total_avec_CTA"] - resultat_optimal["Total_a
 economie_pct     = (economie / resultat_actuel["Total"] * 100) if resultat_actuel["Total"] > 0 else 0
 economie_cta_pct = (economie_cta / resultat_actuel["Total_avec_CTA"] * 100) if resultat_actuel["Total_avec_CTA"] > 0 else 0
 
-# KPIs TURPE seul
-st.subheader("TURPE seul (hors CTA)")
+# KPIs uniques : TURPE + CTA
 c1, c2, c3 = st.columns(3)
-c1.metric("💰 Coût TURPE actuel",    f"{resultat_actuel['Total']:,.0f} €/an")
-c2.metric("✅ Coût TURPE optimisé",  f"{resultat_optimal['Total']:,.0f} €/an", delta=f"-{economie:,.0f} €")
-c3.metric("📉 Économie TURPE",       f"{economie:,.0f} €/an", delta=f"{economie_pct:.1f} %")
-
-# KPIs TURPE + CTA
-st.subheader("TURPE + CTA (15 % — Enedis — depuis fév. 2026)")
-c4, c5, c6 = st.columns(3)
-c4.metric("💰 Coût total actuel",    f"{resultat_actuel['Total_avec_CTA']:,.0f} €/an")
-c5.metric("✅ Coût total optimisé",  f"{resultat_optimal['Total_avec_CTA']:,.0f} €/an", delta=f"-{economie_cta:,.0f} €")
-c6.metric("📉 Économie totale",      f"{economie_cta:,.0f} €/an", delta=f"{economie_cta_pct:.1f} %")
+c1.metric("💰 Facture d'acheminement actuelle",  f"{resultat_actuel['Total_avec_CTA']:,.0f} €/an")
+c2.metric("✅ Facture d'acheminement optimisée", f"{resultat_optimal['Total_avec_CTA']:,.0f} €/an", delta=f"-{economie_cta:,.0f} €")
+c3.metric("📉 Économie annuelle potentielle",     f"{economie_cta:,.0f} €/an", delta=f"{economie_cta_pct:.1f} %")
 
 st.divider()
 
