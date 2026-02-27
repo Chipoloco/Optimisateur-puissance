@@ -125,7 +125,7 @@ def generer_pdf(
     df_raw, df, domaine, fta, type_contrat,
     hc_debut, hc_fin,
     ps_actuelles, resultat_actuel, resultat_optimal,
-    economie, economie_pct,
+    economie, economie_pct, economie_cta, economie_cta_pct,
     nb_annees,
 ) -> bytes:
     from reportlab.lib.pagesizes import A4
@@ -203,17 +203,17 @@ def generer_pdf(
     # ── KPIs ──────────────────────────────────────────────────────────────────
     story.append(Paragraph("Résultats de l'optimisation", s_h2))
 
-    signe = "-" if economie >= 0 else "+"
+    signe = "-" if economie_cta >= 0 else "+"
     kpi_data = [[
-        Paragraph("Coût actuel", s_kpi_label),
-        Paragraph("Coût optimisé", s_kpi_label),
-        Paragraph("Économie annuelle", s_kpi_label),
+        Paragraph("Coût TURPE actuel", s_kpi_label),
+        Paragraph("Coût TURPE optimisé", s_kpi_label),
+        Paragraph("Économie TURPE+CTA", s_kpi_label),
         Paragraph("Gain relatif", s_kpi_label),
     ],[
         Paragraph(f"{resultat_actuel['Total']:,.0f} €/an", s_kpi_val),
         Paragraph(f"{resultat_optimal['Total']:,.0f} €/an", s_kpi_val),
-        Paragraph(f"{signe}{abs(economie):,.0f} €/an", s_kpi_eco if economie >= 0 else ParagraphStyle("r", fontSize=16, textColor=ROUGE, alignment=1, fontName="Helvetica-Bold")),
-        Paragraph(f"{economie_pct:.1f} %", s_kpi_eco if economie >= 0 else ParagraphStyle("r", fontSize=16, textColor=ROUGE, alignment=1, fontName="Helvetica-Bold")),
+        Paragraph(f"{signe}{abs(economie_cta):,.0f} €/an", s_kpi_eco if economie_cta >= 0 else ParagraphStyle("r", fontSize=16, textColor=ROUGE, alignment=1, fontName="Helvetica-Bold")),
+        Paragraph(f"{economie_cta_pct:.1f} %", s_kpi_eco if economie_cta >= 0 else ParagraphStyle("r", fontSize=16, textColor=ROUGE, alignment=1, fontName="Helvetica-Bold")),
     ]]
     t_kpi = Table(kpi_data, colWidths=[content_w/4]*4)
     t_kpi.setStyle(TableStyle([
@@ -266,28 +266,33 @@ def generer_pdf(
     story.append(Spacer(1, 10))
 
     # ── TABLEAU COMPOSANTES ───────────────────────────────────────────────────
-    story.append(Paragraph("Détail des composantes TURPE (€/an annualisés)", s_h2))
-    composantes = ["CG", "CC", "CS", "CMDPS", "Total"]
+    story.append(Paragraph("Détail des composantes TURPE + CTA (€/an annualisés)", s_h2))
+    composantes_pdf_tbl = ["CG", "CC", "CS", "CMDPS", "CTA_TTC", "Total_avec_CTA"]
     headers_c = ["Composante", "Description", "Actuel (€/an)", "Optimisé (€/an)", "Écart (€/an)"]
-    desc = {"CG": "Composante de gestion", "CC": "Composante de comptage",
-            "CS": "Composante de soutirage", "CMDPS": "Dépassement de puissance", "Total": "TOTAL TURPE"}
+    desc_pdf = {
+        "CG": "Composante de gestion", "CC": "Composante de comptage",
+        "CS": "Composante de soutirage", "CMDPS": "Dépassement de puissance",
+        "CTA_TTC": "CTA TTC (15% × part fixe + TVA 20%)",
+        "Total_avec_CTA": "TOTAL TURPE + CTA",
+    }
     rows_c = [headers_c]
-    for c in composantes:
+    for c in composantes_pdf_tbl:
+        lbl = desc_pdf.get(c, c)
         act = resultat_actuel.get(c, 0)
         opt = resultat_optimal.get(c, 0)
         ecart_c = opt - act
-        rows_c.append([c, desc.get(c, ""), f"{act:,.0f}", f"{opt:,.0f}",
+        rows_c.append([lbl[:28], desc_pdf.get(c, "")[:35], f"{act:,.0f}", f"{opt:,.0f}",
                        f"{'+' if ecart_c > 0 else ''}{ecart_c:,.0f}"])
 
-    t_comp = Table(rows_c, colWidths=[2*cm, 5.5*cm, 3*cm, 3*cm, 3*cm])
+    t_comp = Table(rows_c, colWidths=[3*cm, 5*cm, 2.8*cm, 2.8*cm, 2.8*cm])
     style_c = [
         ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
         ("FONTSIZE", (0,0), (-1,-1), 8),
         ("BACKGROUND", (0,0), (-1,0), BLEU),
         ("TEXTCOLOR", (0,0), (-1,0), colors.white),
         ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, GRIS]),
-        ("FONTNAME", (0, len(composantes)), (-1, len(composantes)), "Helvetica-Bold"),
-        ("BACKGROUND", (0, len(composantes)), (-1, len(composantes)), colors.HexColor("#E3F2FD")),
+        ("FONTNAME", (0, len(composantes_pdf_tbl)), (-1, len(composantes_pdf_tbl)), "Helvetica-Bold"),
+        ("BACKGROUND", (0, len(composantes_pdf_tbl)), (-1, len(composantes_pdf_tbl)), colors.HexColor("#E3F2FD")),
         ("GRID", (0,0), (-1,-1), 0.3, colors.HexColor("#CFD8DC")),
         ("ALIGN", (2,0), (-1,-1), "RIGHT"),
         ("TOPPADDING", (0,0), (-1,-1), 4),
@@ -306,12 +311,13 @@ def generer_pdf(
     story.append(RLImage(io.BytesIO(png_courbe), width=content_w, height=content_w*3.2/9))
     story.append(Spacer(1, 8))
 
-    story.append(Paragraph("Composantes TURPE : actuel vs optimisé", s_h2))
-    composantes_pdf = ["CG", "CC", "CS", "CMDPS"]
+    story.append(Paragraph("Composantes TURPE + CTA : actuel vs optimisé", s_h2))
+    composantes_graph = ["CG", "CC", "CS", "CMDPS", "CTA_TTC"]
+    labels_graph_pdf  = ["Gestion", "Comptage", "Soutirage", "Dépassement", "CTA TTC"]
     png_compo = _mpl_composantes(
-        composantes_pdf,
-        [resultat_actuel[c]  for c in composantes_pdf],
-        [resultat_optimal[c] for c in composantes_pdf],
+        labels_graph_pdf,
+        [resultat_actuel[c]  for c in composantes_graph],
+        [resultat_optimal[c] for c in composantes_graph],
     )
     story.append(RLImage(io.BytesIO(png_compo), width=content_w, height=content_w*3.0/9))
     story.append(Spacer(1, 8))
@@ -378,15 +384,22 @@ with st.sidebar:
     st.caption("Contrainte TURPE : HPH ≤ HCH ≤ HPB ≤ HCB")
 
     plages = PLAGES_HTA if domaine == "HTA" else PLAGES_BT_SUP if domaine == "BT > 36 kVA" else ["unique"]
-    ps_actuelles = {}
-    for plage in plages:
-        ps_actuelles[plage] = st.number_input(
-            f"PS {plage} (kVA)", min_value=1, max_value=10000, value=100, step=1, key=f"ps_{plage}"
-        )
 
-    st.divider()
-    st.subheader("⚙️ Optimisation")
-    pas_kva = st.slider("Pas de balayage (kVA)", 1, 10, 1)
+    ps_identiques = st.checkbox("Même puissance pour toutes les plages", value=False)
+
+    ps_actuelles = {}
+    if ps_identiques:
+        ps_commune = st.number_input("PS unique (kVA)", min_value=1, max_value=10000, value=100, step=1)
+        for plage in plages:
+            ps_actuelles[plage] = ps_commune
+        st.caption(f"→ {', '.join(plages)} = {ps_commune} kVA")
+    else:
+        for plage in plages:
+            ps_actuelles[plage] = st.number_input(
+                f"PS {plage} (kVA)", min_value=1, max_value=10000, value=100, step=1, key=f"ps_{plage}"
+            )
+
+    pas_kva = 1  # Pas de balayage fixé à 1 kVA
 
 
 # ─────────────────────────────────────────────
@@ -511,13 +524,24 @@ with st.spinner("⏳ Optimisation en cours..."):
         df.copy(), domaine, fta, type_contrat, pas_kva, ps_actuelles=ps_actuelles
     )
 
-economie     = resultat_actuel["Total"] - resultat_optimal["Total"]
-economie_pct = (economie / resultat_actuel["Total"] * 100) if resultat_actuel["Total"] > 0 else 0
+economie         = resultat_actuel["Total"] - resultat_optimal["Total"]
+economie_cta     = resultat_actuel["Total_avec_CTA"] - resultat_optimal["Total_avec_CTA"]
+economie_pct     = (economie / resultat_actuel["Total"] * 100) if resultat_actuel["Total"] > 0 else 0
+economie_cta_pct = (economie_cta / resultat_actuel["Total_avec_CTA"] * 100) if resultat_actuel["Total_avec_CTA"] > 0 else 0
 
+# KPIs TURPE seul
+st.subheader("TURPE seul (hors CTA)")
 c1, c2, c3 = st.columns(3)
-c1.metric("💰 Coût TURPE actuel (€/an)",    f"{resultat_actuel['Total']:,.0f} €")
-c2.metric("✅ Coût TURPE optimisé (€/an)",   f"{resultat_optimal['Total']:,.0f} €", delta=f"-{economie:,.0f} €")
-c3.metric("📉 Économie annuelle potentielle", f"{economie:,.0f} €", delta=f"{economie_pct:.1f} %")
+c1.metric("💰 Coût TURPE actuel",    f"{resultat_actuel['Total']:,.0f} €/an")
+c2.metric("✅ Coût TURPE optimisé",  f"{resultat_optimal['Total']:,.0f} €/an", delta=f"-{economie:,.0f} €")
+c3.metric("📉 Économie TURPE",       f"{economie:,.0f} €/an", delta=f"{economie_pct:.1f} %")
+
+# KPIs TURPE + CTA
+st.subheader("TURPE + CTA (15 % — Enedis — depuis fév. 2026)")
+c4, c5, c6 = st.columns(3)
+c4.metric("💰 Coût total actuel",    f"{resultat_actuel['Total_avec_CTA']:,.0f} €/an")
+c5.metric("✅ Coût total optimisé",  f"{resultat_optimal['Total_avec_CTA']:,.0f} €/an", delta=f"-{economie_cta:,.0f} €")
+c6.metric("📉 Économie totale",      f"{economie_cta:,.0f} €/an", delta=f"{economie_cta_pct:.1f} %")
 
 st.divider()
 
@@ -538,13 +562,12 @@ def style_ecart(v):
 st.dataframe(df_comp.style.map(style_ecart, subset=["Écart (kVA)"]),
              use_container_width=True, hide_index=True)
 
-
-
 # ── Composantes ───────────────────────────────────────────────────────────────
-st.subheader("🔍 Détail des composantes TURPE (€/an)")
-composantes = ["CG", "CC", "CS", "CMDPS"]
+st.subheader("🔍 Détail des composantes (€/an annualisés)")
+composantes = ["CG", "CC", "CS", "CMDPS", "CTA_TTC"]
+labels_comp = {"CG": "Gestion", "CC": "Comptage", "CS": "Soutirage", "CMDPS": "Dépassement", "CTA_TTC": "CTA TTC (15%+TVA)"}
 df_compo_tab = pd.DataFrame({
-    "Composante":       composantes,
+    "Composante":       [labels_comp[c] for c in composantes],
     "Actuel (€/an)":   [resultat_actuel[c]  for c in composantes],
     "Optimisé (€/an)": [resultat_optimal[c] for c in composantes],
 })
@@ -554,12 +577,13 @@ col_tab, col_chart = st.columns(2)
 with col_tab:
     st.dataframe(df_compo_tab, use_container_width=True, hide_index=True)
 with col_chart:
+    labels_graph = [labels_comp[c] for c in composantes]
     fig_compo = go.Figure(data=[
-        go.Bar(name="Actuel",   x=composantes, y=[resultat_actuel[c]  for c in composantes], marker_color="#FF6B6B"),
-        go.Bar(name="Optimisé", x=composantes, y=[resultat_optimal[c] for c in composantes], marker_color="#4CAF50"),
+        go.Bar(name="Actuel",   x=labels_graph, y=[resultat_actuel[c]  for c in composantes], marker_color="#FF6B6B"),
+        go.Bar(name="Optimisé", x=labels_graph, y=[resultat_optimal[c] for c in composantes], marker_color="#4CAF50"),
     ])
-    fig_compo.update_layout(barmode="group", title="Composantes : actuel vs optimisé",
-                            yaxis_title="€/an", height=280)
+    fig_compo.update_layout(barmode="group", title="Composantes : actuel vs optimisé (avec CTA)",
+                            yaxis_title="€/an", height=300)
     st.plotly_chart(fig_compo, use_container_width=True)
 
 # ── Courbe avec seuils ────────────────────────────────────────────────────────
@@ -644,15 +668,15 @@ with col_proj1:
     nb_annees = st.slider("Horizon (années)", 1, 20, 10)
 
 with col_proj2:
-    annees       = list(range(1, nb_annees + 1))
-    eco_annuelle = max(0, economie)
-    eco_par_an   = [eco_annuelle for _ in annees]
-    eco_cumul    = [eco_annuelle * a for a in annees]
+    annees           = list(range(1, nb_annees + 1))
+    eco_annuelle     = max(0, economie)
+    eco_cta_annuelle = max(0, economie_cta)
+    eco_cumul        = [eco_cta_annuelle * a for a in annees]
 
     fig_projection = go.Figure()
     fig_projection.add_trace(go.Bar(
-        x=annees, y=eco_par_an,
-        name="Économie annuelle",
+        x=annees, y=[eco_cta_annuelle] * nb_annees,
+        name="Économie annuelle (TURPE + CTA)",
         marker_color="#4CAF50", opacity=0.7,
     ))
     fig_projection.add_trace(go.Scatter(
@@ -661,7 +685,7 @@ with col_proj2:
         line=dict(color="#1565C0", width=2), yaxis="y2",
     ))
     fig_projection.update_layout(
-        title=f"Projection des économies sur {nb_annees} ans",
+        title=f"Projection des économies sur {nb_annees} ans (TURPE + CTA)",
         xaxis=dict(title="Année", tickmode="linear", dtick=1),
         yaxis=dict(title="Économie annuelle (€)", side="left"),
         yaxis2=dict(title="Économie cumulée (€)", overlaying="y", side="right"),
@@ -670,10 +694,11 @@ with col_proj2:
     )
     st.plotly_chart(fig_projection, use_container_width=True)
 
-    if eco_annuelle > 0:
-        c1, c2 = st.columns(2)
-        c1.metric("Économie annuelle",            f"{eco_annuelle:,.0f} €/an")
-        c2.metric(f"Cumul sur {nb_annees} ans",   f"{eco_cumul[-1]:,.0f} €")
+    if eco_cta_annuelle > 0:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Économie TURPE seul",             f"{eco_annuelle:,.0f} €/an")
+        c2.metric("Économie TURPE + CTA",            f"{eco_cta_annuelle:,.0f} €/an")
+        c3.metric(f"Cumul sur {nb_annees} ans",      f"{eco_cumul[-1]:,.0f} €")
 
 st.divider()
 
@@ -735,6 +760,7 @@ with col_dl3:
                     resultat_actuel=resultat_actuel,
                     resultat_optimal=resultat_optimal,
                     economie=economie, economie_pct=economie_pct,
+                    economie_cta=economie_cta, economie_cta_pct=economie_cta_pct,
                     nb_annees=nb_annees,
                 )
                 st.session_state["pdf_bytes"] = pdf_bytes
