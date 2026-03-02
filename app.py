@@ -273,10 +273,10 @@ def generer_pdf(
             rows_fta_pdf.append([
                 Paragraph(fta_k + suf, style_l),
                 Paragraph(ps_str, s_cell),
-                Paragraph(f"{r['Total']:,.0f} EUR",    style_l),
-                Paragraph(f"{r['CTA_HT']:,.0f} EUR",   style_l),
-                Paragraph(f"{r['Total_HT']:,.0f} EUR", style_l),
-                Paragraph(f"{'+' if ecart>=0 else ''}{ecart:,.0f} EUR", style_l),
+                Paragraph(f"{r['Total']:,.0f} €",    style_l),
+                Paragraph(f"{r['CTA_HT']:,.0f} €",   style_l),
+                Paragraph(f"{r['Total_HT']:,.0f} €", style_l),
+                Paragraph(f"{'+' if ecart>=0 else ''}{ecart:,.0f} €", style_l),
             ])
         t_fta = Table(rows_fta_pdf, colWidths=[3.2*cm, 3.8*cm, 2.4*cm, 2.2*cm, 2.4*cm, 2.7*cm])
         t_fta.setStyle(TableStyle([
@@ -306,9 +306,9 @@ def generer_pdf(
         sl       = s_cell_bold if is_total else s_cell
         rows_c.append([
             Paragraph(labels_compo[c], sl),
-            Paragraph(f"{act:,.0f} EUR/an", sl),
-            Paragraph(f"{opt:,.0f} EUR/an", sl),
-            Paragraph(f"{'+' if ecart_c > 0 else ''}{ecart_c:,.0f} EUR/an", sl),
+            Paragraph(f"{act:,.0f} €/an", sl),
+            Paragraph(f"{opt:,.0f} €/an", sl),
+            Paragraph(f"{'+' if ecart_c > 0 else ''}{ecart_c:,.0f} €/an", sl),
         ])
 
     t_comp = Table(rows_c, colWidths=[4*cm, 3.5*cm, 3.5*cm, 3.5*cm])
