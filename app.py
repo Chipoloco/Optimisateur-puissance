@@ -141,7 +141,7 @@ def generer_pdf(
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.platypus import (
         SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-        Image as RLImage, HRFlowable, PageBreak,
+        Image as RLImage, HRFlowable, PageBreak, KeepTogether,
     )
     from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 
@@ -191,7 +191,6 @@ def generer_pdf(
     story.append(HRFlowable(width="100%", thickness=2, color=BLEU, spaceAfter=10))
 
     # ── INFOS SITE ────────────────────────────────────────────────────────────
-    story.append(Paragraph("Informations du site", s_h2))
     nb_jours = df_raw.attrs.get("nb_jours", 365)
     debut_str = df_raw.attrs.get("periode_debut", "?")
     fin_str   = df_raw.attrs.get("periode_fin",   "?")
@@ -214,39 +213,37 @@ def generer_pdf(
         ("TOPPADDING",    (0,0), (-1,-1), 4),
         ("BOTTOMPADDING", (0,0), (-1,-1), 4),
     ]))
-    story.append(t_site)
-    story.append(Spacer(1, 8))
+    story.append(KeepTogether([
+        Paragraph("Informations du site", s_h2),
+        t_site,
+        Spacer(1, 8),
+    ]))
 
     # ── KPIs ─────────────────────────────────────────────────────────────────
-    story.append(Paragraph("Résultats de l'optimisation (TURPE + CTA — HT)", s_h2))
     s_eco = s_kpi_eco if economie_cta >= 0 else s_kpi_neg
 
     if fta_change:
-        eco_ps  = resultat_actuel["Total_HT"] - resultat_fta_act_pdf["Total_HT"]
-        eco_fta = resultat_fta_act_pdf["Total_HT"] - resultat_optimal["Total_HT"]
         kpi_data = [
-            [Paragraph("Situation actuelle",         s_kpi_label),
-             Paragraph(f"PS opt. FTA act. ({fta})", s_kpi_label),
-             Paragraph(f"Optimal ({fta_opt})",       s_kpi_label),
-             Paragraph("Économie totale",             s_kpi_label)],
-            [Paragraph(f"{resultat_actuel['Total_HT']:,.0f} €/an",         s_kpi_val),
-             Paragraph(f"{resultat_fta_act_pdf['Total_HT']:,.0f} €/an",    s_kpi_val),
-             Paragraph(f"{resultat_optimal['Total_HT']:,.0f} €/an",        s_kpi_val),
-             Paragraph(f"-{abs(economie_cta):,.0f} €/an\n({economie_cta_pct:.1f} %)", s_eco)],
+            [Paragraph("Situation actuelle",          s_kpi_label),
+             Paragraph(f"PS opt. FTA act. ({fta})",   s_kpi_label),
+             Paragraph(f"Optimal ({fta_opt})",         s_kpi_label),
+             Paragraph("Économie totale",              s_kpi_label)],
+            [Paragraph(f"{resultat_actuel['Total_HT']:,.0f} €/an",              s_kpi_val),
+             Paragraph(f"{resultat_fta_act_pdf['Total_HT']:,.0f} €/an",         s_kpi_val),
+             Paragraph(f"{resultat_optimal['Total_HT']:,.0f} €/an",             s_kpi_val),
+             Paragraph(f"-{abs(economie_cta):,.0f} €/an<br/>({economie_cta_pct:.1f} %)", s_eco)],
         ]
-        col_w = content_w / 4
     else:
         kpi_data = [
             [Paragraph("Coût actuel HT",  s_kpi_label), Paragraph("Coût optimisé HT", s_kpi_label),
              Paragraph("Économie HT/an",  s_kpi_label), Paragraph("Gain relatif",     s_kpi_label)],
-            [Paragraph(f"{resultat_actuel['Total_HT']:,.0f} €/an",  s_kpi_val),
-             Paragraph(f"{resultat_optimal['Total_HT']:,.0f} €/an", s_kpi_val),
-             Paragraph(f"-{abs(economie_cta):,.0f} €/an", s_eco),
-             Paragraph(f"{economie_cta_pct:.1f} %",       s_eco)],
+            [Paragraph(f"{resultat_actuel['Total_HT']:,.0f} €/an",               s_kpi_val),
+             Paragraph(f"{resultat_optimal['Total_HT']:,.0f} €/an",              s_kpi_val),
+             Paragraph(f"-{abs(economie_cta):,.0f} €/an<br/>({economie_cta_pct:.1f} %)", s_eco),
+             Paragraph(f"{economie_cta_pct:.1f} %",                              s_eco)],
         ]
-        col_w = content_w / 4
 
-    t_kpi = Table(kpi_data, colWidths=[col_w]*4)
+    t_kpi = Table(kpi_data, colWidths=[content_w/4]*4)
     t_kpi.setStyle(TableStyle([
         ("BOX",        (0,0), (-1,-1), 1, BLEU),
         ("INNERGRID",  (0,0), (-1,-1), 0.5, colors.HexColor("#CFD8DC")),
@@ -254,11 +251,13 @@ def generer_pdf(
         ("TOPPADDING",    (0,0), (-1,-1), 7),
         ("BOTTOMPADDING", (0,0), (-1,-1), 7),
     ]))
-    story.append(t_kpi)
-    story.append(Spacer(1, 8))
+    story.append(KeepTogether([
+        Paragraph("Résultats de l'optimisation (TURPE + CTA — HT)", s_h2),
+        t_kpi,
+        Spacer(1, 8),
+    ]))
 
     # ── TABLEAU PS ───────────────────────────────────────────────────────────
-    story.append(Paragraph("Puissances souscrites recommandées", s_h2))
     ps_opt_act = resultat_fta_act_pdf["puissances_souscrites"]
     ps_opt_opt = resultat_optimal["puissances_souscrites"]
 
@@ -298,12 +297,14 @@ def generer_pdf(
         ("TOPPADDING",    (0,0), (-1,-1), 4),
         ("BOTTOMPADDING", (0,0), (-1,-1), 4),
     ]))
-    story.append(t_ps)
-    story.append(Spacer(1, 8))
+    story.append(KeepTogether([
+        Paragraph("Puissances souscrites recommandées", s_h2),
+        t_ps,
+        Spacer(1, 8),
+    ]))
 
     # ── TABLEAU COMPARATIF FTA ────────────────────────────────────────────────
     if len(resultats_fta) > 1:
-        story.append(Paragraph("Comparaison des formules tarifaires (PS optimisées)", s_h2))
         rows_fta_pdf = [[Paragraph(h, s_cell_bold) for h in
                          ["FTA", "PS optimisées", "TURPE HT", "CTA HT", "Total HT", "Économie vs actuel"]]]
         for fta_k, v in sorted(resultats_fta.items(), key=lambda x: x[1]["resultat"]["Total_HT"]):
@@ -313,7 +314,6 @@ def generer_pdf(
             ecart  = round(resultat_actuel["Total_HT"] - r["Total_HT"], 0)
             is_best = fta_k == fta_opt
             is_cur  = fta_k == fta
-            # Remplacement emojis par texte lisible avec Helvetica
             suf     = " [OPT.]" if is_best else (" [act.]" if is_cur else "")
             style_l = s_cell_bold if is_best else s_cell
             rows_fta_pdf.append([
@@ -329,20 +329,29 @@ def generer_pdf(
             ("BACKGROUND",     (0,0), (-1,0),  BLEU),
             ("TEXTCOLOR",      (0,0), (-1,0),  colors.white),
             ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, GRIS]),
-            ("BACKGROUND",     (0,1), (-1,1),  colors.HexColor("#C8E6C9")),  # meilleure (triée 1re)
+            ("BACKGROUND",     (0,1), (-1,1),  colors.HexColor("#C8E6C9")),
             ("GRID",           (0,0), (-1,-1), 0.3, colors.HexColor("#CFD8DC")),
             ("ALIGN",          (2,0), (-1,-1), "RIGHT"),
             ("TOPPADDING",     (0,0), (-1,-1), 3),
             ("BOTTOMPADDING",  (0,0), (-1,-1), 3),
         ]))
-        story.append(t_fta)
-        story.append(Spacer(1, 8))
+        story.append(KeepTogether([
+            Paragraph("Comparaison des formules tarifaires (PS optimisées)", s_h2),
+            t_fta,
+            Spacer(1, 8),
+        ]))
 
     # ── TABLEAU COMPOSANTES ───────────────────────────────────────────────────
-    story.append(Paragraph("Détail des composantes TURPE + CTA — HT annualisés", s_h2))
     compo_list   = ["CG", "CC", "CS", "CMDPS", "CTA_HT", "Total_HT"]
     labels_compo = {"CG": "Gestion (CG)", "CC": "Comptage (CC)", "CS": "Soutirage (CS)",
                     "CMDPS": "Dépassement (CMDPS)", "CTA_HT": "CTA HT (15 %)", "Total_HT": "TOTAL HT"}
+
+    def _cell_montant(v, sl):
+        return Paragraph(f"{v:,.0f} \u20ac/an", sl)
+
+    def _cell_ecart(ecart_v, sl):
+        signe = "+" if ecart_v > 0 else ""
+        return Paragraph(f"{signe}{ecart_v:,.0f} \u20ac/an", sl)
 
     if fta_change:
         rows_c = [[Paragraph(h, s_cell_bold) for h in
@@ -352,14 +361,13 @@ def generer_pdf(
             inter   = resultat_fta_act_pdf.get(c, 0)
             opt     = resultat_optimal.get(c, 0)
             ecart_c = opt - act
-            is_tot  = c == "Total_HT"
-            sl      = s_cell_bold if is_tot else s_cell
+            sl      = s_cell_bold if c == "Total_HT" else s_cell
             rows_c.append([
                 Paragraph(labels_compo[c], sl),
-                Paragraph(f"{act:,.0f} €/an",                                           sl),
-                Paragraph(f"{inter:,.0f} €/an",                                         sl),
-                Paragraph(f"{opt:,.0f} €/an",                                           sl),
-                Paragraph(f"{'+' if ecart_c > 0 else ''}{ecart_c:,.0f} €/an",           sl),
+                _cell_montant(act,     sl),
+                _cell_montant(inter,   sl),
+                _cell_montant(opt,     sl),
+                _cell_ecart(ecart_c,   sl),
             ])
         t_comp = Table(rows_c, colWidths=[3.5*cm, 2.8*cm, 2.8*cm, 2.8*cm, 2.8*cm])
     else:
@@ -368,13 +376,12 @@ def generer_pdf(
             act     = resultat_actuel.get(c, 0)
             opt     = resultat_optimal.get(c, 0)
             ecart_c = opt - act
-            is_tot  = c == "Total_HT"
-            sl      = s_cell_bold if is_tot else s_cell
+            sl      = s_cell_bold if c == "Total_HT" else s_cell
             rows_c.append([
                 Paragraph(labels_compo[c], sl),
-                Paragraph(f"{act:,.0f} €/an",                                 sl),
-                Paragraph(f"{opt:,.0f} €/an",                                 sl),
-                Paragraph(f"{'+' if ecart_c > 0 else ''}{ecart_c:,.0f} €/an", sl),
+                _cell_montant(act,     sl),
+                _cell_montant(opt,     sl),
+                _cell_ecart(ecart_c,   sl),
             ])
         t_comp = Table(rows_c, colWidths=[4*cm, 3.5*cm, 3.5*cm, 3.5*cm])
     style_comp = [
@@ -389,10 +396,13 @@ def generer_pdf(
         ("VALIGN",      (0,0), (-1,-1), "MIDDLE"),
     ]
     t_comp.setStyle(TableStyle(style_comp))
-    story.append(t_comp)
+    story.append(KeepTogether([
+        Paragraph("Détail des composantes TURPE + CTA — HT annualisés", s_h2),
+        t_comp,
+        Spacer(1, 8),
+    ]))
 
     # ── GRAPHIQUES ────────────────────────────────────────────────────────────
-    from reportlab.platypus import KeepTogether
 
     story.append(PageBreak())
     story.append(Paragraph(f"{nom_etude} — {datetime.now().strftime('%d/%m/%Y')}", s_date))
