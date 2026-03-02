@@ -229,17 +229,18 @@ def generer_pdf(
     story.append(Spacer(1, 8))
 
     # ── TABLEAU PS ───────────────────────────────────────────────────────────
-    story.append(Paragraph("Puissances souscrites recommandées (kVA)", s_h2))
+    story.append(Paragraph("Puissances souscrites recommandées", s_h2))
     ps_opt   = resultat_optimal["puissances_souscrites"]
-    rows_ps  = [[Paragraph(h, s_cell_bold) for h in ["Plage", "Actuelle (kVA)", "Optimisée (kVA)", "Écart (kVA)"]]]
+    rows_ps  = [[Paragraph(h, s_cell_bold) for h in ["Plage", "Actuelle", "Optimisée", "Écart"]]]
     for p in ps_actuelles:
         ecart = ps_opt.get(p, 0) - ps_actuelles[p]
         couleur_ecart = VERT if ecart < 0 else (ROUGE if ecart > 0 else colors.black)
         rows_ps.append([
             Paragraph(p, s_cell_bold),
-            Paragraph(str(ps_actuelles[p]), s_cell),
-            Paragraph(str(ps_opt.get(p, "—")), s_cell),
-            Paragraph(f"{'+' if ecart > 0 else ''}{ecart}", ParagraphStyle("e", fontSize=8, textColor=couleur_ecart, fontName="Helvetica-Bold")),
+            Paragraph(f"{ps_actuelles[p]} kVA", s_cell),
+            Paragraph(f"{ps_opt.get(p, '—')} kVA", s_cell),
+            Paragraph(f"{'+' if ecart > 0 else ''}{ecart} kVA",
+                      ParagraphStyle("e", fontSize=8, textColor=couleur_ecart, fontName="Helvetica-Bold")),
         ])
     t_ps = Table(rows_ps, colWidths=[3*cm, 3.5*cm, 3.5*cm, 3.5*cm])
     t_ps.setStyle(TableStyle([
@@ -258,55 +259,56 @@ def generer_pdf(
     if len(resultats_fta) > 1:
         story.append(Paragraph("Comparaison des formules tarifaires (PS optimisées)", s_h2))
         rows_fta_pdf = [[Paragraph(h, s_cell_bold) for h in
-                         ["FTA", "PS optimisées", "TURPE HT (€/an)", "CTA HT (€/an)", "Total HT (€/an)", "Écart vs actuel"]]]
+                         ["FTA", "PS optimisées", "TURPE HT", "CTA HT", "Total HT", "Économie vs actuel"]]]
         for fta_k, v in sorted(resultats_fta.items(), key=lambda x: x[1]["resultat"]["Total_HT"]):
-            r   = v["resultat"]
-            ps  = r["puissances_souscrites"]
-            ps_str = " / ".join(f"{p}:{ps[p]}" for p in ps) if len(ps) > 1 else f"{list(ps.values())[0]} kVA"
-            ecart = round(resultat_actuel["Total_HT"] - r["Total_HT"], 0)
+            r      = v["resultat"]
+            ps     = r["puissances_souscrites"]
+            ps_str = " / ".join(f"{p}:{int(ps[p])} kVA" for p in ps) if len(ps) > 1 else f"{int(list(ps.values())[0])} kVA"
+            ecart  = round(resultat_actuel["Total_HT"] - r["Total_HT"], 0)
             is_best = fta_k == fta_opt
             is_cur  = fta_k == fta
-            suf = " ⭐" if is_best else (" ←" if is_cur else "")
+            # Remplacement emojis par texte lisible avec Helvetica
+            suf     = " [OPT.]" if is_best else (" [act.]" if is_cur else "")
             style_l = s_cell_bold if is_best else s_cell
             rows_fta_pdf.append([
                 Paragraph(fta_k + suf, style_l),
-                Paragraph(ps_str,               s_cell),
-                Paragraph(f"{r['Total']:,.0f}",    style_l),
-                Paragraph(f"{r['CTA_HT']:,.0f}",   style_l),
-                Paragraph(f"{r['Total_HT']:,.0f}", style_l),
-                Paragraph(f"{'+' if ecart>=0 else ''}{ecart:,.0f}", style_l),
+                Paragraph(ps_str, s_cell),
+                Paragraph(f"{r['Total']:,.0f} EUR",    style_l),
+                Paragraph(f"{r['CTA_HT']:,.0f} EUR",   style_l),
+                Paragraph(f"{r['Total_HT']:,.0f} EUR", style_l),
+                Paragraph(f"{'+' if ecart>=0 else ''}{ecart:,.0f} EUR", style_l),
             ])
-        t_fta = Table(rows_fta_pdf, colWidths=[3.5*cm, 4*cm, 2.3*cm, 2.3*cm, 2.3*cm, 2.3*cm])
+        t_fta = Table(rows_fta_pdf, colWidths=[3.2*cm, 3.8*cm, 2.4*cm, 2.2*cm, 2.4*cm, 2.7*cm])
         t_fta.setStyle(TableStyle([
-            ("BACKGROUND",  (0,0), (-1,0),  BLEU),
-            ("TEXTCOLOR",   (0,0), (-1,0),  colors.white),
+            ("BACKGROUND",     (0,0), (-1,0),  BLEU),
+            ("TEXTCOLOR",      (0,0), (-1,0),  colors.white),
             ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, GRIS]),
-            ("BACKGROUND",  (0,1), (-1,1),  colors.HexColor("#E8F5E9")),  # meilleure en haut (triée)
-            ("GRID",        (0,0), (-1,-1), 0.3, colors.HexColor("#CFD8DC")),
-            ("ALIGN",       (2,0), (-1,-1), "RIGHT"),
-            ("TOPPADDING",    (0,0), (-1,-1), 3),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+            ("BACKGROUND",     (0,1), (-1,1),  colors.HexColor("#C8E6C9")),  # meilleure (triée 1re)
+            ("GRID",           (0,0), (-1,-1), 0.3, colors.HexColor("#CFD8DC")),
+            ("ALIGN",          (2,0), (-1,-1), "RIGHT"),
+            ("TOPPADDING",     (0,0), (-1,-1), 3),
+            ("BOTTOMPADDING",  (0,0), (-1,-1), 3),
         ]))
         story.append(t_fta)
         story.append(Spacer(1, 8))
 
     # ── TABLEAU COMPOSANTES (sans colonne description) ────────────────────────
-    story.append(Paragraph("Détail des composantes TURPE + CTA — HT (€/an annualisés)", s_h2))
-    compo_list = ["CG", "CC", "CS", "CMDPS", "CTA_HT", "Total_HT"]
+    story.append(Paragraph("Détail des composantes TURPE + CTA — HT annualisés", s_h2))
+    compo_list   = ["CG", "CC", "CS", "CMDPS", "CTA_HT", "Total_HT"]
     labels_compo = {"CG": "Gestion (CG)", "CC": "Comptage (CC)", "CS": "Soutirage (CS)",
                     "CMDPS": "Dépassement (CMDPS)", "CTA_HT": "CTA HT (15 %)", "Total_HT": "TOTAL HT"}
-    rows_c = [[Paragraph(h, s_cell_bold) for h in ["Composante", "Actuel (€/an HT)", "Optimisé (€/an HT)", "Écart (€/an HT)"]]]
+    rows_c = [[Paragraph(h, s_cell_bold) for h in ["Composante", "Actuel", "Optimisé", "Écart"]]]
     for c in compo_list:
-        act     = resultat_actuel.get(c, 0)
-        opt     = resultat_optimal.get(c, 0)
-        ecart_c = opt - act
+        act      = resultat_actuel.get(c, 0)
+        opt      = resultat_optimal.get(c, 0)
+        ecart_c  = opt - act
         is_total = c == "Total_HT"
-        style_lbl = s_cell_bold if is_total else s_cell
+        sl       = s_cell_bold if is_total else s_cell
         rows_c.append([
-            Paragraph(labels_compo[c], style_lbl),
-            Paragraph(f"{act:,.0f}", style_lbl),
-            Paragraph(f"{opt:,.0f}", style_lbl),
-            Paragraph(f"{'+' if ecart_c > 0 else ''}{ecart_c:,.0f}", style_lbl),
+            Paragraph(labels_compo[c], sl),
+            Paragraph(f"{act:,.0f} EUR/an", sl),
+            Paragraph(f"{opt:,.0f} EUR/an", sl),
+            Paragraph(f"{'+' if ecart_c > 0 else ''}{ecart_c:,.0f} EUR/an", sl),
         ])
 
     t_comp = Table(rows_c, colWidths=[4*cm, 3.5*cm, 3.5*cm, 3.5*cm])
@@ -325,29 +327,37 @@ def generer_pdf(
     story.append(t_comp)
 
     # ── GRAPHIQUES ────────────────────────────────────────────────────────────
+    from reportlab.platypus import KeepTogether
+
     story.append(PageBreak())
     story.append(Paragraph(f"{nom_etude} — {datetime.now().strftime('%d/%m/%Y')}", s_date))
     story.append(HRFlowable(width="100%", thickness=1, color=BLEU, spaceAfter=8))
 
-    story.append(Paragraph("Courbe de charge par plage horosaisonnière", s_h2))
     png_courbe = _mpl_courbe_charge(df, COULEURS_PLAGES)
-    story.append(RLImage(io.BytesIO(png_courbe), width=content_w, height=content_w*3.2/9))
+    story.append(KeepTogether([
+        Paragraph("Courbe de charge par plage horosaisonnière", s_h2),
+        RLImage(io.BytesIO(png_courbe), width=content_w, height=content_w*3.2/9),
+    ]))
     story.append(Spacer(1, 8))
 
-    story.append(Paragraph("TURPE + CTA HT annualisé : actuel vs optimisé par composante", s_h2))
-    compo_graph_pdf   = ["CG", "CC", "CS", "CMDPS", "CTA_HT"]
-    labels_graph_pdf  = ["Gestion", "Comptage", "Soutirage", "Dépassement", "CTA HT"]
+    compo_graph_pdf  = ["CG", "CC", "CS", "CMDPS", "CTA_HT"]
+    labels_graph_pdf = ["Gestion", "Comptage", "Soutirage", "Dépassement", "CTA HT"]
     png_compo = _mpl_composantes(
         labels_graph_pdf,
         [resultat_actuel[c]  for c in compo_graph_pdf],
         [resultat_optimal[c] for c in compo_graph_pdf],
     )
-    story.append(RLImage(io.BytesIO(png_compo), width=content_w, height=content_w*3.0/9))
+    story.append(KeepTogether([
+        Paragraph("TURPE + CTA HT annualisé : actuel vs optimisé par composante", s_h2),
+        RLImage(io.BytesIO(png_compo), width=content_w, height=content_w*3.0/9),
+    ]))
     story.append(Spacer(1, 8))
 
-    story.append(Paragraph(f"Économie annuelle HT — cumul sur {nb_annees} ans : {max(0, economie_cta) * nb_annees:,.0f} €", s_h2))
     png_proj = _mpl_projection(nb_annees, max(0, economie_cta))
-    story.append(RLImage(io.BytesIO(png_proj), width=content_w, height=content_w*3.0/9))
+    story.append(KeepTogether([
+        Paragraph(f"Économie annuelle HT — cumul sur {nb_annees} ans : {max(0, economie_cta) * nb_annees:,.0f} €", s_h2),
+        RLImage(io.BytesIO(png_proj), width=content_w, height=content_w*3.0/9),
+    ]))
 
     # ── PIED DE PAGE ─────────────────────────────────────────────────────────
     story.append(Spacer(1, 14))
@@ -426,6 +436,17 @@ with st.sidebar:
             )
 
     pas_kva = 1  # Pas de balayage fixé à 1 kVA
+
+    st.divider()
+    # ── Optimisation FTA ─────────────────────
+    st.subheader("⚙️ Options d'optimisation")
+    optimiser_fta = st.checkbox(
+        "Comparer toutes les FTA",
+        value=False,
+        help="Teste toutes les formules tarifaires du domaine et retient "
+             "celle qui minimise TURPE + CTA HT. Les PS sont optimisées "
+             "pour chaque FTA candidate. Prix de fourniture non affectés.",
+    )
 
 
 # ─────────────────────────────────────────────
@@ -547,15 +568,6 @@ st.header("💡 Optimisation — Puissances & Formule Tarifaire")
 # ── Calcul du coût actuel ──────────────────────────────────────────────────────
 resultat_actuel = calculer_cout_total(df.copy(), domaine, fta, ps_actuelles, type_contrat)
 
-# ── Option : optimisation FTA ─────────────────────────────────────────────────
-optimiser_fta = st.checkbox(
-    "🔄 Comparer et optimiser la formule tarifaire (FTA)",
-    value=False,
-    help="Teste toutes les FTA du domaine et retient celle qui minimise TURPE + CTA HT. "
-         "Les PS sont optimisées pour chaque FTA candidate. "
-         "Les prix de fourniture (énergie) ne sont pas affectés.",
-)
-
 # ── Optimisation ──────────────────────────────────────────────────────────────
 FTA_PAR_DOMAINE = {
     "HTA":         ["CU pointe fixe", "CU pointe mobile", "LU pointe fixe", "LU pointe mobile"],
@@ -620,23 +632,26 @@ if optimiser_fta:
     for fta_k, v in resultats_fta.items():
         r   = v["resultat"]
         ps  = r["puissances_souscrites"]
-        ps_str = " / ".join(f"{p}={ps[p]}" for p in ps) if len(ps) > 1 else f"{list(ps.values())[0]} kVA"
-        marker = " ⭐" if fta_k == fta_opt else ("  ← actuelle" if fta_k == fta else "")
+        ps_str = " / ".join(f"{p}={int(ps[p])} kVA" for p in ps) if len(ps) > 1 else f"{int(list(ps.values())[0])} kVA"
+        marker = " ★" if fta_k == fta_opt else (" ←" if fta_k == fta else "")
+        ecart  = round(resultat_actuel["Total_HT"] - r["Total_HT"], 0)
         rows_fta.append({
-            "FTA":              fta_k + marker,
-            "PS optimisées":    ps_str,
-            "TURPE HT (€/an)":  r["Total"],
-            "CTA HT (€/an)":    r["CTA_HT"],
-            "Total HT (€/an)":  r["Total_HT"],
-            "Écart vs actuel":  round(resultat_actuel["Total_HT"] - r["Total_HT"], 0),
+            "FTA":               fta_k + marker,
+            "PS optimisées":     ps_str,
+            "TURPE HT":          f"{r['Total']:,.0f} €",
+            "CTA HT":            f"{r['CTA_HT']:,.0f} €",
+            "Total HT":          f"{r['Total_HT']:,.0f} €",
+            "Économie vs actuel": f"{'+' if ecart >= 0 else ''}{ecart:,.0f} €",
+            "_total_ht_num":     r["Total_HT"],   # colonne cachée pour le tri
         })
-    df_fta = pd.DataFrame(rows_fta).sort_values("Total HT (€/an)")
+    df_fta = pd.DataFrame(rows_fta).sort_values("_total_ht_num").drop(columns=["_total_ht_num"])
 
     def style_fta(row):
-        if "⭐" in str(row["FTA"]):
-            return ["background-color: #E8F5E9; font-weight: bold"] * len(row)
-        elif "actuelle" in str(row["FTA"]):
-            return ["background-color: #E3F2FD"] * len(row)
+        tag = str(row["FTA"])
+        if "★" in tag:
+            return ["background-color: #A5D6A7; color: black; font-weight: bold"] * len(row)
+        elif "←" in tag:
+            return ["background-color: #90CAF9; color: black"] * len(row)
         return [""] * len(row)
 
     st.dataframe(df_fta.style.apply(style_fta, axis=1),
@@ -647,22 +662,27 @@ st.divider()
 # ── Tableau PS ────────────────────────────────────────────────────────────────
 st.subheader(f"📋 Puissances souscrites recommandées — FTA : {fta_opt}")
 df_comp = pd.DataFrame({
-    "Plage":              list(ps_actuelles.keys()),
-    "PS actuelle (kVA)":  [ps_actuelles[p] for p in ps_actuelles],
-    "PS optimisée (kVA)": [resultat_optimal["puissances_souscrites"].get(p, 0) for p in ps_actuelles],
+    "Plage":             list(ps_actuelles.keys()),
+    "PS actuelle":       [f"{ps_actuelles[p]} kVA" for p in ps_actuelles],
+    "PS optimisée":      [f"{resultat_optimal['puissances_souscrites'].get(p, 0)} kVA" for p in ps_actuelles],
+    "Écart":             [f"{resultat_optimal['puissances_souscrites'].get(p, 0) - ps_actuelles[p]:+d} kVA" for p in ps_actuelles],
 })
-df_comp["Écart (kVA)"] = df_comp["PS optimisée (kVA)"] - df_comp["PS actuelle (kVA)"]
+# Colonne numérique cachée pour le style
+_ecarts_num = [resultat_optimal["puissances_souscrites"].get(p, 0) - ps_actuelles[p] for p in ps_actuelles]
 
-def style_ecart(v):
-    if v < 0: return "color: green; font-weight: bold"
-    if v > 0: return "color: red"
-    return ""
+def style_ecart_ps(row):
+    idx = df_comp.index[df_comp["Plage"] == row["Plage"]].tolist()
+    if not idx: return [""] * len(row)
+    v = _ecarts_num[idx[0]]
+    if v < 0: return ["", "", "", "color: green; font-weight: bold"]
+    if v > 0: return ["", "", "", "color: red"]
+    return [""] * len(row)
 
-st.dataframe(df_comp.style.map(style_ecart, subset=["Écart (kVA)"]),
+st.dataframe(df_comp.style.apply(style_ecart_ps, axis=1),
              use_container_width=True, hide_index=True)
 
 # ── Composantes ───────────────────────────────────────────────────────────────
-st.subheader("🔍 Détail des composantes TURPE + CTA — HT (€/an annualisés)")
+st.subheader("🔍 Détail des composantes TURPE + CTA — HT")
 composantes  = ["CG", "CC", "CS", "CMDPS", "CTA_HT"]
 labels_comp  = {
     "CG":     "Gestion (CG)",
@@ -672,11 +692,11 @@ labels_comp  = {
     "CTA_HT": "CTA HT (15 % × CG+CC+CS fixe)",
 }
 df_compo_tab = pd.DataFrame({
-    "Composante":       [labels_comp[c] for c in composantes],
-    "Actuel (€/an HT)":   [resultat_actuel[c]  for c in composantes],
-    "Optimisé (€/an HT)": [resultat_optimal[c] for c in composantes],
+    "Composante": [labels_comp[c] for c in composantes],
+    "Actuel":     [f"{resultat_actuel[c]:,.0f} €/an" for c in composantes],
+    "Optimisé":   [f"{resultat_optimal[c]:,.0f} €/an" for c in composantes],
+    "Écart":      [f"{resultat_optimal[c] - resultat_actuel[c]:+,.0f} €/an" for c in composantes],
 })
-df_compo_tab["Écart (€/an HT)"] = df_compo_tab["Optimisé (€/an HT)"] - df_compo_tab["Actuel (€/an HT)"]
 
 col_tab, col_chart = st.columns(2)
 with col_tab:
