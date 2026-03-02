@@ -1,5 +1,5 @@
 """
-Optimisateur de Puissance Facture électrique
+Optimisateur de Puissance Souscrite TURPE 7
 Interface Streamlit — Enedis uniquement
 """
 
@@ -122,11 +122,11 @@ def _mpl_projection(nb_annees, eco_annuelle) -> bytes:
 # HELPER : génération PDF avec reportlab
 # ─────────────────────────────────────────────
 def generer_pdf(
-    df_raw, df, nom_etude, domaine, fta, type_contrat,
+    df_raw, df, nom_etude, domaine, fta, fta_opt, type_contrat,
     hc_debut, hc_fin,
     ps_actuelles, resultat_actuel, resultat_optimal,
     economie, economie_pct, economie_cta, economie_cta_pct,
-    nb_annees,
+    nb_annees, resultats_fta,
 ) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
@@ -171,8 +171,9 @@ def generer_pdf(
 
     # ── EN-TÊTE ───────────────────────────────────────────────────────────────
     story.append(Paragraph(nom_etude, s_titre))
+    fta_label = f"FTA recommandée : {fta_opt}" if fta_opt != fta else f"FTA : {fta}"
     story.append(Paragraph(
-        f"Optimisation TURPE 7 + CTA — {domaine} | FTA : {fta} | {type_contrat.replace('_', ' ').title()} — Montants HT",
+        f"Optimisation TURPE 7 + CTA — {domaine} | {fta_label} | {type_contrat.replace('_', ' ').title()} — Montants HT",
         s_sous_titre
     ))
     story.append(Paragraph(f"Rapport du {datetime.now().strftime('%d/%m/%Y')}", s_date))
@@ -252,6 +253,42 @@ def generer_pdf(
     ]))
     story.append(t_ps)
     story.append(Spacer(1, 8))
+
+    # ── TABLEAU COMPARATIF FTA ────────────────────────────────────────────────
+    if len(resultats_fta) > 1:
+        story.append(Paragraph("Comparaison des formules tarifaires (PS optimisées)", s_h2))
+        rows_fta_pdf = [[Paragraph(h, s_cell_bold) for h in
+                         ["FTA", "PS optimisées", "TURPE HT (€/an)", "CTA HT (€/an)", "Total HT (€/an)", "Écart vs actuel"]]]
+        for fta_k, v in sorted(resultats_fta.items(), key=lambda x: x[1]["resultat"]["Total_HT"]):
+            r   = v["resultat"]
+            ps  = r["puissances_souscrites"]
+            ps_str = " / ".join(f"{p}:{ps[p]}" for p in ps) if len(ps) > 1 else f"{list(ps.values())[0]} kVA"
+            ecart = round(resultat_actuel["Total_HT"] - r["Total_HT"], 0)
+            is_best = fta_k == fta_opt
+            is_cur  = fta_k == fta
+            suf = " ⭐" if is_best else (" ←" if is_cur else "")
+            style_l = s_cell_bold if is_best else s_cell
+            rows_fta_pdf.append([
+                Paragraph(fta_k + suf, style_l),
+                Paragraph(ps_str,               s_cell),
+                Paragraph(f"{r['Total']:,.0f}",    style_l),
+                Paragraph(f"{r['CTA_HT']:,.0f}",   style_l),
+                Paragraph(f"{r['Total_HT']:,.0f}", style_l),
+                Paragraph(f"{'+' if ecart>=0 else ''}{ecart:,.0f}", style_l),
+            ])
+        t_fta = Table(rows_fta_pdf, colWidths=[3.5*cm, 4*cm, 2.3*cm, 2.3*cm, 2.3*cm, 2.3*cm])
+        t_fta.setStyle(TableStyle([
+            ("BACKGROUND",  (0,0), (-1,0),  BLEU),
+            ("TEXTCOLOR",   (0,0), (-1,0),  colors.white),
+            ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, GRIS]),
+            ("BACKGROUND",  (0,1), (-1,1),  colors.HexColor("#E8F5E9")),  # meilleure en haut (triée)
+            ("GRID",        (0,0), (-1,-1), 0.3, colors.HexColor("#CFD8DC")),
+            ("ALIGN",       (2,0), (-1,-1), "RIGHT"),
+            ("TOPPADDING",    (0,0), (-1,-1), 3),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+        ]))
+        story.append(t_fta)
+        story.append(Spacer(1, 8))
 
     # ── TABLEAU COMPOSANTES (sans colonne description) ────────────────────────
     story.append(Paragraph("Détail des composantes TURPE + CTA — HT (€/an annualisés)", s_h2))
@@ -505,29 +542,110 @@ st.divider()
 # ─────────────────────────────────────────────
 # OPTIMISATION
 # ─────────────────────────────────────────────
-st.header("💡 Optimisation des puissances souscrites")
+st.header("💡 Optimisation — Puissances & Formule Tarifaire")
 
-with st.spinner("⏳ Optimisation en cours..."):
-    resultat_actuel  = calculer_cout_total(df.copy(), domaine, fta, ps_actuelles, type_contrat)
-    resultat_optimal, df_scenarios = optimiser_puissances(
-        df.copy(), domaine, fta, type_contrat, pas_kva, ps_actuelles=ps_actuelles
-    )
+# ── Calcul du coût actuel ──────────────────────────────────────────────────────
+resultat_actuel = calculer_cout_total(df.copy(), domaine, fta, ps_actuelles, type_contrat)
 
-economie         = resultat_actuel["Total"] - resultat_optimal["Total"]
+# ── Option : optimisation FTA ─────────────────────────────────────────────────
+optimiser_fta = st.checkbox(
+    "🔄 Comparer et optimiser la formule tarifaire (FTA)",
+    value=False,
+    help="Teste toutes les FTA du domaine et retient celle qui minimise TURPE + CTA HT. "
+         "Les PS sont optimisées pour chaque FTA candidate. "
+         "Les prix de fourniture (énergie) ne sont pas affectés.",
+)
+
+# ── Optimisation ──────────────────────────────────────────────────────────────
+FTA_PAR_DOMAINE = {
+    "HTA":         ["CU pointe fixe", "CU pointe mobile", "LU pointe fixe", "LU pointe mobile"],
+    "BT > 36 kVA": ["CU", "LU"],
+    "BT ≤ 36 kVA": ["CU4", "MU4", "LU", "CU (dérogatoire)", "MUDT (dérogatoire)"],
+}
+# Si cochée : on teste toutes les FTA du domaine ; sinon, uniquement la FTA actuelle
+fta_candidates = FTA_PAR_DOMAINE[domaine] if optimiser_fta else [fta]
+
+resultats_fta = {}
+spinner_msg = "⏳ Optimisation sur toutes les formules tarifaires..." if optimiser_fta else "⏳ Optimisation en cours..."
+with st.spinner(spinner_msg):
+    for fta_cand in fta_candidates:
+        # Pour HTA, la classification des heures Pointe dépend de la FTA (fixe vs mobile)
+        # → on reclassifie pour chaque candidat
+        df_cand = classifier_dataframe(df_raw, domaine, fta_cand, hc_debut, hc_fin)
+        res_opt_cand, df_sc_cand = optimiser_puissances(
+            df_cand, domaine, fta_cand, type_contrat, pas_kva,
+            ps_actuelles=ps_actuelles if fta_cand == fta else None,
+        )
+        resultats_fta[fta_cand] = {
+            "resultat":  res_opt_cand,
+            "scenarios": df_sc_cand,
+            "df_classe": df_cand,
+        }
+
+# Meilleure FTA = celle dont le Total_HT optimisé est le plus bas
+fta_opt          = min(resultats_fta, key=lambda k: resultats_fta[k]["resultat"]["Total_HT"])
+resultat_optimal = resultats_fta[fta_opt]["resultat"]
+df_scenarios     = resultats_fta[fta_opt]["scenarios"]
+df_opt           = resultats_fta[fta_opt]["df_classe"]   # df classifié avec la FTA optimale
+fta_change       = fta_opt != fta
+
+economie         = resultat_actuel["Total"]    - resultat_optimal["Total"]
 economie_cta     = resultat_actuel["Total_HT"] - resultat_optimal["Total_HT"]
-economie_pct     = (economie / resultat_actuel["Total"] * 100) if resultat_actuel["Total"] > 0 else 0
+economie_pct     = (economie     / resultat_actuel["Total"]    * 100) if resultat_actuel["Total"]    > 0 else 0
 economie_cta_pct = (economie_cta / resultat_actuel["Total_HT"] * 100) if resultat_actuel["Total_HT"] > 0 else 0
 
-# KPIs — TURPE + CTA HT
+# ── KPIs ──────────────────────────────────────────────────────────────────────
 c1, c2, c3 = st.columns(3)
-c1.metric("💰 Coût TURPE + CTA actuel (HT)", f"{resultat_actuel['Total_HT']:,.0f} €/an")
-c2.metric("✅ Coût TURPE + CTA optimisé (HT)", f"{resultat_optimal['Total_HT']:,.0f} €/an", delta=f"-{economie_cta:,.0f} €")
-c3.metric("📉 Économie annuelle potentielle (HT)", f"{economie_cta:,.0f} €/an", delta=f"{economie_cta_pct:.1f} %")
+c1.metric("💰 Coût TURPE + CTA actuel (HT)",     f"{resultat_actuel['Total_HT']:,.0f} €/an")
+c2.metric("✅ Coût TURPE + CTA optimisé (HT)",   f"{resultat_optimal['Total_HT']:,.0f} €/an",
+          delta=f"-{economie_cta:,.0f} €")
+c3.metric("📉 Économie annuelle potentielle (HT)", f"{economie_cta:,.0f} €/an",
+          delta=f"{economie_cta_pct:.1f} %")
+
+# ── Résumé FTA optimale ───────────────────────────────────────────────────────
+if optimiser_fta:
+    if fta_change:
+        st.success(
+            f"🔄 **Changement de FTA recommandé** : **{fta}** → **{fta_opt}** "
+            f"(économie supplémentaire vs optimisation PS seule : "
+            f"{resultat_actuel['Total_HT'] - resultats_fta[fta]['resultat']['Total_HT']:,.0f} € "
+            f"→ {economie_cta:,.0f} € avec changement FTA)"
+        )
+    else:
+        st.info(f"✅ La FTA actuelle **{fta}** est déjà la plus avantageuse pour ce profil de consommation.")
+
+    # ── Tableau comparatif FTA ────────────────────────────────────────────────
+    st.subheader("📊 Comparaison des formules tarifaires (PS optimisées)")
+    rows_fta = []
+    for fta_k, v in resultats_fta.items():
+        r   = v["resultat"]
+        ps  = r["puissances_souscrites"]
+        ps_str = " / ".join(f"{p}={ps[p]}" for p in ps) if len(ps) > 1 else f"{list(ps.values())[0]} kVA"
+        marker = " ⭐" if fta_k == fta_opt else ("  ← actuelle" if fta_k == fta else "")
+        rows_fta.append({
+            "FTA":              fta_k + marker,
+            "PS optimisées":    ps_str,
+            "TURPE HT (€/an)":  r["Total"],
+            "CTA HT (€/an)":    r["CTA_HT"],
+            "Total HT (€/an)":  r["Total_HT"],
+            "Écart vs actuel":  round(resultat_actuel["Total_HT"] - r["Total_HT"], 0),
+        })
+    df_fta = pd.DataFrame(rows_fta).sort_values("Total HT (€/an)")
+
+    def style_fta(row):
+        if "⭐" in str(row["FTA"]):
+            return ["background-color: #E8F5E9; font-weight: bold"] * len(row)
+        elif "actuelle" in str(row["FTA"]):
+            return ["background-color: #E3F2FD"] * len(row)
+        return [""] * len(row)
+
+    st.dataframe(df_fta.style.apply(style_fta, axis=1),
+                 use_container_width=True, hide_index=True)
 
 st.divider()
 
 # ── Tableau PS ────────────────────────────────────────────────────────────────
-st.subheader("📋 Puissances souscrites : actuel vs optimal")
+st.subheader(f"📋 Puissances souscrites recommandées — FTA : {fta_opt}")
 df_comp = pd.DataFrame({
     "Plage":              list(ps_actuelles.keys()),
     "PS actuelle (kVA)":  [ps_actuelles[p] for p in ps_actuelles],
@@ -656,30 +774,38 @@ with col_proj1:
     eco_cta_annuelle = max(0, economie_cta)
 
 with col_proj2:
-    # Graphique : coût annuel actuel vs optimisé par composante (1 an, annualisé)
-    compo_graph  = ["CG", "CC", "CS", "CMDPS", "CTA_HT"]
-    labels_proj  = ["Gestion", "Comptage", "Soutirage", "Dépassement", "CTA HT"]
-    vals_act     = [resultat_actuel[c]  for c in compo_graph]
-    vals_opt     = [resultat_optimal[c] for c in compo_graph]
+    annees           = list(range(1, nb_annees + 1))
+    eco_cta_annuelle = max(0, economie_cta)
+    eco_cumul        = [eco_cta_annuelle * a for a in annees]
 
-    fig_projection = go.Figure(data=[
-        go.Bar(name="Actuel",   x=labels_proj, y=vals_act, marker_color="#FF6B6B"),
-        go.Bar(name="Optimisé", x=labels_proj, y=vals_opt, marker_color="#4CAF50"),
-    ])
+    fig_projection = go.Figure()
+    fig_projection.add_trace(go.Bar(
+        x=annees, y=[eco_cta_annuelle] * nb_annees,
+        name="Économie annuelle HT",
+        marker_color="#4CAF50", opacity=0.75,
+    ))
+    fig_projection.add_trace(go.Scatter(
+        x=annees, y=eco_cumul,
+        mode="lines+markers", name="Cumul",
+        line=dict(color="#1565C0", width=2),
+        marker=dict(size=5),
+        yaxis="y2",
+    ))
     fig_projection.update_layout(
-        barmode="group",
-        title="Coût annuel TURPE + CTA HT : actuel vs optimisé (annualisé sur 12 mois)",
-        yaxis_title="€/an HT",
-        height=380,
+        title=f"Projection des gains sur {nb_annees} ans — FTA {fta_opt}",
+        xaxis=dict(title="Année", tickmode="linear", dtick=1 if nb_annees <= 15 else 2),
+        yaxis=dict(title="Économie annuelle (€ HT)", side="left", showgrid=True),
+        yaxis2=dict(title="Cumul (€ HT)", overlaying="y", side="right", showgrid=False),
         legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        height=380,
     )
     st.plotly_chart(fig_projection, use_container_width=True)
 
     if eco_cta_annuelle > 0:
         c1, c2, c3 = st.columns(3)
-        c1.metric("Économie annuelle HT",           f"{eco_cta_annuelle:,.0f} €/an")
-        c2.metric(f"Cumul sur {nb_annees} ans",     f"{eco_cta_annuelle * nb_annees:,.0f} €")
-        c3.metric("Gain relatif",                   f"{economie_cta_pct:.1f} %")
+        c1.metric("Économie annuelle HT",       f"{eco_cta_annuelle:,.0f} €/an")
+        c2.metric(f"Cumul sur {nb_annees} ans", f"{eco_cta_annuelle * nb_annees:,.0f} €")
+        c3.metric("Gain relatif",               f"{economie_cta_pct:.1f} %")
 
 st.divider()
 
@@ -736,9 +862,9 @@ with col_dl3:
         with st.spinner("Génération du PDF en cours..."):
             try:
                 pdf_bytes = generer_pdf(
-                    df_raw=df_raw, df=df,
+                    df_raw=df_raw, df=df_opt,
                     nom_etude=nom_etude,
-                    domaine=domaine, fta=fta, type_contrat=type_contrat,
+                    domaine=domaine, fta=fta, fta_opt=fta_opt, type_contrat=type_contrat,
                     hc_debut=hc_debut, hc_fin=hc_fin,
                     ps_actuelles=ps_actuelles,
                     resultat_actuel=resultat_actuel,
@@ -746,6 +872,7 @@ with col_dl3:
                     economie=economie, economie_pct=economie_pct,
                     economie_cta=economie_cta, economie_cta_pct=economie_cta_pct,
                     nb_annees=nb_annees,
+                    resultats_fta=resultats_fta,
                 )
                 st.session_state["pdf_bytes"] = pdf_bytes
                 st.success("✅ PDF généré !")
@@ -753,10 +880,11 @@ with col_dl3:
                 st.error(f"❌ Erreur PDF : {e}")
 
     if "pdf_bytes" in st.session_state:
+        nom_fichier = nom_etude.strip().replace(" ", "_").replace("/", "-") or "rapport"
         st.download_button(
             "⬇️ Télécharger le PDF",
             data=st.session_state["pdf_bytes"],
-            file_name=f"rapport_turpe7_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            file_name=f"{nom_fichier}_{datetime.now().strftime('%Y%m%d')}.pdf",
             mime="application/pdf",
         )
 
