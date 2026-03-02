@@ -666,7 +666,8 @@ fta_opt          = min(resultats_fta, key=lambda k: resultats_fta[k]["resultat"]
 resultat_optimal = resultats_fta[fta_opt]["resultat"]
 df_scenarios     = resultats_fta[fta_opt]["scenarios"]
 df_opt           = resultats_fta[fta_opt]["df_classe"]   # df classifié avec la FTA optimale
-fta_change       = fta_opt != fta
+fta_change           = fta_opt != fta
+resultat_fta_actuelle = resultats_fta[fta]["resultat"]   # PS optimisées avec la FTA actuelle
 
 economie         = resultat_actuel["Total"]    - resultat_optimal["Total"]
 economie_cta     = resultat_actuel["Total_HT"] - resultat_optimal["Total_HT"]
@@ -743,8 +744,6 @@ st.divider()
 # ── Tableau PS ────────────────────────────────────────────────────────────────
 st.subheader(f"📋 Puissances souscrites recommandées — FTA optimale : {fta_opt}")
 
-# Résultat intermédiaire : PS optimisées avec la FTA actuelle (toujours disponible)
-resultat_fta_actuelle = resultats_fta[fta]["resultat"]
 ps_opt_fta_act = resultat_fta_actuelle["puissances_souscrites"]
 ps_opt_fta_opt = resultat_optimal["puissances_souscrites"]
 
