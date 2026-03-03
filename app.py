@@ -47,7 +47,7 @@ def _mpl_courbe_charge(df, couleurs) -> bytes:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(figsize=(9, 3.2))
+    fig, ax = plt.subplots(figsize=(9, 2.6))
     for plage in sorted(df["plage"].unique()):
         df_p = df[df["plage"] == plage]
         ax.scatter(df_p["timestamp"], df_p["puissance_kw"],
@@ -74,13 +74,13 @@ def _mpl_composantes(composantes, actuel, optimal, intermediaire=None, label_int
     x = np.arange(len(composantes))
     if intermediaire is not None:
         w = 0.25
-        fig, ax = plt.subplots(figsize=(9, 3.0))
+        fig, ax = plt.subplots(figsize=(9, 2.5))
         ax.bar(x - w,   actuel,        w, label="Actuel",       color="#FF6B6B")
         ax.bar(x,       intermediaire, w, label=label_inter,     color="#FFB74D")
         ax.bar(x + w,   optimal,       w, label="Optimal",       color="#4CAF50")
     else:
         w = 0.35
-        fig, ax = plt.subplots(figsize=(9, 3.0))
+        fig, ax = plt.subplots(figsize=(9, 2.5))
         ax.bar(x - w/2, actuel,  w, label="Actuel",   color="#FF6B6B")
         ax.bar(x + w/2, optimal, w, label="Optimisé", color="#4CAF50")
     ax.set_xticks(x)
@@ -105,7 +105,7 @@ def _mpl_projection(nb_annees, eco_annuelle) -> bytes:
     annees    = list(range(1, nb_annees + 1))
     eco_cumul = [eco_annuelle * a for a in annees]
 
-    fig, ax1 = plt.subplots(figsize=(9, 3.0))
+    fig, ax1 = plt.subplots(figsize=(9, 2.5))
     ax2 = ax1.twinx()
     ax1.bar(annees, [eco_annuelle] * nb_annees, color="#4CAF50", alpha=0.7, label="Économie annuelle")
     ax2.plot(annees, eco_cumul, color="#1565C0", marker="o", markersize=3, linewidth=2, label="Cumul")
@@ -164,7 +164,7 @@ def generer_pdf(
 
     s_titre      = ParagraphStyle("titre",    fontSize=16, textColor=BLEU,  spaceAfter=8,  fontName="Helvetica-Bold")
     s_sous_titre = ParagraphStyle("soustitre",fontSize=8,  textColor=colors.HexColor("#455A64"), spaceAfter=10, fontName="Helvetica")
-    s_h2         = ParagraphStyle("h2",       fontSize=11, textColor=BLEU,  spaceBefore=12, spaceAfter=5, fontName="Helvetica-Bold")
+    s_h2         = ParagraphStyle("h2",       fontSize=11, textColor=BLEU,  spaceBefore=8, spaceAfter=4, fontName="Helvetica-Bold")
     s_date       = ParagraphStyle("date",     fontSize=8,  textColor=colors.HexColor("#78909C"), alignment=TA_RIGHT, fontName="Helvetica")
     s_kpi_label  = ParagraphStyle("kpilbl",   fontSize=8,  textColor=colors.HexColor("#546E7A"), alignment=TA_CENTER, fontName="Helvetica")
     s_kpi_val    = ParagraphStyle("kpival",   fontSize=15, textColor=BLEU,  alignment=TA_CENTER, fontName="Helvetica-Bold")
@@ -181,14 +181,14 @@ def generer_pdf(
     story = []
 
     # ── EN-TÊTE ───────────────────────────────────────────────────────────────
-    story.append(Paragraph(nom_etude, s_titre))
+    story.append(Paragraph(nom_etude or "Étude d'optimisation", s_titre))
     fta_label = f"FTA recommandée : {fta_opt}" if fta_opt != fta else f"FTA : {fta}"
     story.append(Paragraph(
         f"Optimisation TURPE 7 + CTA — {domaine} | {fta_label} | {type_contrat.replace('_', ' ').title()} — Montants HT",
         s_sous_titre
     ))
     story.append(Paragraph(f"Rapport du {datetime.now().strftime('%d/%m/%Y')}", s_date))
-    story.append(HRFlowable(width="100%", thickness=2, color=BLEU, spaceAfter=10))
+    story.append(HRFlowable(width="100%", thickness=2, color=BLEU, spaceAfter=8))
 
     # ── INFOS SITE ────────────────────────────────────────────────────────────
     nb_jours = df_raw.attrs.get("nb_jours", 365)
@@ -216,7 +216,7 @@ def generer_pdf(
     story.append(KeepTogether([
         Paragraph("Informations du site", s_h2),
         t_site,
-        Spacer(1, 8),
+        Spacer(1, 6),
     ]))
 
     # ── KPIs ─────────────────────────────────────────────────────────────────
@@ -254,7 +254,7 @@ def generer_pdf(
     story.append(KeepTogether([
         Paragraph("Résultats de l'optimisation (TURPE + CTA — HT)", s_h2),
         t_kpi,
-        Spacer(1, 8),
+        Spacer(1, 6),
     ]))
 
     # ── TABLEAU PS ───────────────────────────────────────────────────────────
@@ -300,7 +300,7 @@ def generer_pdf(
     story.append(KeepTogether([
         Paragraph("Puissances souscrites recommandées", s_h2),
         t_ps,
-        Spacer(1, 8),
+        Spacer(1, 6),
     ]))
 
     # ── TABLEAU COMPARATIF FTA ────────────────────────────────────────────────
@@ -338,7 +338,7 @@ def generer_pdf(
         story.append(KeepTogether([
             Paragraph("Comparaison des formules tarifaires (PS optimisées)", s_h2),
             t_fta,
-            Spacer(1, 8),
+            Spacer(1, 6),
         ]))
 
     # ── TABLEAU COMPOSANTES ───────────────────────────────────────────────────
@@ -399,21 +399,25 @@ def generer_pdf(
     story.append(KeepTogether([
         Paragraph("Détail des composantes TURPE + CTA — HT annualisés", s_h2),
         t_comp,
-        Spacer(1, 8),
+        Spacer(1, 6),
     ]))
 
-    # ── GRAPHIQUES ────────────────────────────────────────────────────────────
-
+    # ── GRAPHIQUES — page 2 ───────────────────────────────────────────────────
     story.append(PageBreak())
-    story.append(Paragraph(f"{nom_etude} — {datetime.now().strftime('%d/%m/%Y')}", s_date))
-    story.append(HRFlowable(width="100%", thickness=1, color=BLEU, spaceAfter=8))
+    story.append(Paragraph(f"{nom_etude or 'Étude d\'optimisation'} — {datetime.now().strftime('%d/%m/%Y')}", s_date))
+    story.append(HRFlowable(width="100%", thickness=1, color=BLEU, spaceAfter=6))
+
+    # Hauteurs réduites pour tenir en une page
+    h_courbe = content_w * 2.6 / 9
+    h_barres = content_w * 2.5 / 9
+    h_proj   = content_w * 2.5 / 9
 
     png_courbe = _mpl_courbe_charge(df, COULEURS_PLAGES)
     story.append(KeepTogether([
         Paragraph("Courbe de charge par plage horosaisonnière", s_h2),
-        RLImage(io.BytesIO(png_courbe), width=content_w, height=content_w*3.2/9),
+        RLImage(io.BytesIO(png_courbe), width=content_w, height=h_courbe),
+        Spacer(1, 4),
     ]))
-    story.append(Spacer(1, 8))
 
     compo_graph_pdf  = ["CG", "CC", "CS", "CMDPS", "CTA_HT"]
     labels_graph_pdf = ["Gestion", "Comptage", "Soutirage", "Dépassement", "CTA HT"]
@@ -426,18 +430,18 @@ def generer_pdf(
     )
     story.append(KeepTogether([
         Paragraph("TURPE + CTA HT annualisé : actuel vs optimisé par composante", s_h2),
-        RLImage(io.BytesIO(png_compo), width=content_w, height=content_w*3.0/9),
+        RLImage(io.BytesIO(png_compo), width=content_w, height=h_barres),
+        Spacer(1, 4),
     ]))
-    story.append(Spacer(1, 8))
 
     png_proj = _mpl_projection(nb_annees, max(0, economie_cta))
     story.append(KeepTogether([
         Paragraph(f"Économie annuelle HT — cumul sur {nb_annees} ans : {max(0, economie_cta) * nb_annees:,.0f} €", s_h2),
-        RLImage(io.BytesIO(png_proj), width=content_w, height=content_w*3.0/9),
+        RLImage(io.BytesIO(png_proj), width=content_w, height=h_proj),
     ]))
 
     # ── PIED DE PAGE ─────────────────────────────────────────────────────────
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 10))
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#B0BEC5")))
     story.append(Paragraph(
         "TURPE 7 + CTA — Réseau Enedis — Tarifs au 1er février 2026 — Délibération CRE n°2025-78 — Montants hors TVA (HT)",
@@ -454,7 +458,7 @@ def generer_pdf(
 with st.sidebar:
     st.header("🔧 Paramétrage")
 
-    nom_etude = st.text_input("Nom de l'étude", value="Étude d'optimisation",
+    nom_etude = st.text_input("Nom de l'étude", value="",
                               help="Apparaîtra en titre sur le rapport PDF")
 
     domaine = st.selectbox("Domaine de tension", ["HTA", "BT > 36 kVA", "BT ≤ 36 kVA"])
@@ -658,8 +662,6 @@ resultats_fta = {}
 spinner_msg = "⏳ Optimisation sur toutes les formules tarifaires..." if optimiser_fta else "⏳ Optimisation en cours..."
 with st.spinner(spinner_msg):
     for fta_cand in fta_candidates:
-        # Pour HTA, la classification des heures Pointe dépend de la FTA (fixe vs mobile)
-        # → on reclassifie pour chaque candidat
         df_cand = classifier_dataframe(df_raw, domaine, fta_cand, hc_debut, hc_fin)
         res_opt_cand, df_sc_cand = optimiser_puissances(
             df_cand, domaine, fta_cand, type_contrat, pas_kva,
@@ -675,9 +677,9 @@ with st.spinner(spinner_msg):
 fta_opt          = min(resultats_fta, key=lambda k: resultats_fta[k]["resultat"]["Total_HT"])
 resultat_optimal = resultats_fta[fta_opt]["resultat"]
 df_scenarios     = resultats_fta[fta_opt]["scenarios"]
-df_opt           = resultats_fta[fta_opt]["df_classe"]   # df classifié avec la FTA optimale
+df_opt           = resultats_fta[fta_opt]["df_classe"]
 fta_change           = fta_opt != fta
-resultat_fta_actuelle = resultats_fta[fta]["resultat"]   # PS optimisées avec la FTA actuelle
+resultat_fta_actuelle = resultats_fta[fta]["resultat"]
 
 economie         = resultat_actuel["Total"]    - resultat_optimal["Total"]
 economie_cta     = resultat_actuel["Total_HT"] - resultat_optimal["Total_HT"]
@@ -723,18 +725,15 @@ if optimiser_fta:
     rows_fta = []
     for fta_k, v in resultats_fta.items():
         r   = v["resultat"]
-        ps  = r["puissances_souscrites"]
-        ps_str = " / ".join(f"{p}={int(ps[p])} kVA" for p in ps) if len(ps) > 1 else f"{int(list(ps.values())[0])} kVA"
         marker = " ★" if fta_k == fta_opt else (" ←" if fta_k == fta else "")
         ecart  = round(resultat_actuel["Total_HT"] - r["Total_HT"], 0)
         rows_fta.append({
-            "FTA":               fta_k + marker,
-            "PS optimisées":     ps_str,
-            "TURPE HT":          f"{r['Total']:,.0f} €",
-            "CTA HT":            f"{r['CTA_HT']:,.0f} €",
-            "Total HT":          f"{r['Total_HT']:,.0f} €",
+            "FTA":                fta_k + marker,
+            "TURPE HT":           f"{r['Total']:,.0f} €",
+            "CTA HT":             f"{r['CTA_HT']:,.0f} €",
+            "Total HT":           f"{r['Total_HT']:,.0f} €",
             "Économie vs actuel": f"{'+' if ecart >= 0 else ''}{ecart:,.0f} €",
-            "_total_ht_num":     r["Total_HT"],   # colonne cachée pour le tri
+            "_total_ht_num":      r["Total_HT"],
         })
     df_fta = pd.DataFrame(rows_fta).sort_values("_total_ht_num").drop(columns=["_total_ht_num"])
 
@@ -1032,7 +1031,8 @@ with col_dl3:
                 st.error(f"❌ Erreur PDF : {e}")
 
     if "pdf_bytes" in st.session_state:
-        nom_fichier = nom_etude.strip().replace(" ", "_").replace("/", "-") or "rapport"
+        nom_base    = nom_etude.strip().replace(" ", "_").replace("/", "-")
+        nom_fichier = f"Rapport_{nom_base}" if nom_base else "Rapport"
         st.download_button(
             "⬇️ Télécharger le PDF",
             data=st.session_state["pdf_bytes"],
