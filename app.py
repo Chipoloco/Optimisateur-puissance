@@ -223,33 +223,38 @@ def generer_pdf(
     s_eco = s_kpi_eco if economie_cta >= 0 else s_kpi_neg
 
     if fta_change:
+        # 4 colonnes : Actuelle | PS opt. FTA act. | Optimal | Économie totale
         kpi_data = [
             [Paragraph("Situation actuelle",          s_kpi_label),
              Paragraph(f"PS opt. FTA act. ({fta})",   s_kpi_label),
              Paragraph(f"Optimal ({fta_opt})",         s_kpi_label),
              Paragraph("Économie totale",              s_kpi_label)],
-            [Paragraph(f"{resultat_actuel['Total_HT']:,.0f} €/an",              s_kpi_val),
-             Paragraph(f"{resultat_fta_act_pdf['Total_HT']:,.0f} €/an",         s_kpi_val),
-             Paragraph(f"{resultat_optimal['Total_HT']:,.0f} €/an",             s_kpi_val),
-             Paragraph(f"-{abs(economie_cta):,.0f} €/an<br/>({economie_cta_pct:.1f} %)", s_eco)],
+            [Paragraph(f"{resultat_actuel['Total_HT']:,.0f} €/an",          s_kpi_val),
+             Paragraph(f"{resultat_fta_act_pdf['Total_HT']:,.0f} €/an",     s_kpi_val),
+             Paragraph(f"{resultat_optimal['Total_HT']:,.0f} €/an",         s_kpi_val),
+             Paragraph(f"-{abs(economie_cta):,.0f} €/an",                   s_eco)],
         ]
+        kpi_col_w = [content_w / 4] * 4
     else:
+        # 3 colonnes : Coût actuel | Coût optimisé | Économie (sans % redondant)
         kpi_data = [
-            [Paragraph("Coût actuel HT",  s_kpi_label), Paragraph("Coût optimisé HT", s_kpi_label),
-             Paragraph("Économie HT/an",  s_kpi_label), Paragraph("Gain relatif",     s_kpi_label)],
-            [Paragraph(f"{resultat_actuel['Total_HT']:,.0f} €/an",               s_kpi_val),
-             Paragraph(f"{resultat_optimal['Total_HT']:,.0f} €/an",              s_kpi_val),
-             Paragraph(f"-{abs(economie_cta):,.0f} €/an<br/>({economie_cta_pct:.1f} %)", s_eco),
-             Paragraph(f"{economie_cta_pct:.1f} %",                              s_eco)],
+            [Paragraph("Coût actuel HT",  s_kpi_label),
+             Paragraph("Coût optimisé HT", s_kpi_label),
+             Paragraph("Économie HT/an",   s_kpi_label)],
+            [Paragraph(f"{resultat_actuel['Total_HT']:,.0f} €/an",   s_kpi_val),
+             Paragraph(f"{resultat_optimal['Total_HT']:,.0f} €/an",  s_kpi_val),
+             Paragraph(f"-{abs(economie_cta):,.0f} €/an",            s_eco)],
         ]
+        kpi_col_w = [content_w / 3] * 3
 
-    t_kpi = Table(kpi_data, colWidths=[content_w/4]*4)
+    t_kpi = Table(kpi_data, colWidths=kpi_col_w)
     t_kpi.setStyle(TableStyle([
         ("BOX",        (0,0), (-1,-1), 1, BLEU),
         ("INNERGRID",  (0,0), (-1,-1), 0.5, colors.HexColor("#CFD8DC")),
         ("BACKGROUND", (0,0), (-1,0),  colors.HexColor("#E3F2FD")),
-        ("TOPPADDING",    (0,0), (-1,-1), 7),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 7),
+        ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+        ("TOPPADDING",    (0,0), (-1,-1), 10),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 10),
     ]))
     story.append(KeepTogether([
         Paragraph("Résultats de l'optimisation (TURPE + CTA — HT)", s_h2),
