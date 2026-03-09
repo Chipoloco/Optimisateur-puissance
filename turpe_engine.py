@@ -100,7 +100,7 @@ def _finaliser_dataframe(df_clean: pd.DataFrame, resolution_source: str) -> pd.D
 
     df_1h = (
         df_clean.set_index("timestamp")["puissance_kw"]
-        .resample("h").max()
+        .resample("h").mean()
         .reset_index()
     )
 
