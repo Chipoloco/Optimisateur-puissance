@@ -190,6 +190,40 @@ def charger_fichier_likewatt(filepath_or_buffer) -> pd.DataFrame:
     return _finaliser_dataframe(df_clean, f"PT{int(pas)}M")
 
 
+def charger_fichier_likewatt_compact(filepath_or_buffer) -> pd.DataFrame:
+    """
+    Charge un fichier CSV format Likewatt compact (variante export).
+    Colonnes : Date de la mesure (DD/MM/YYYY HH:MM fusionné) | Puissance (W)
+    Date et heure dans une seule colonne, séparateur ;
+    Pas : détecté automatiquement depuis les données.
+    """
+    df = pd.read_csv(filepath_or_buffer, sep=";", low_memory=False)
+
+    colonnes_requises = {"Date de la mesure", "Puissance (W)"}
+    if not colonnes_requises.issubset(df.columns):
+        raise ValueError(f"Colonnes manquantes pour format Likewatt compact. Trouvées : {set(df.columns)}")
+
+    df["timestamp"] = pd.to_datetime(
+        df["Date de la mesure"].astype(str),
+        dayfirst=True,
+        errors="coerce"
+    )
+
+    df_clean = pd.DataFrame({
+        "timestamp":    df["timestamp"],
+        "puissance_kw": pd.to_numeric(df["Puissance (W)"], errors="coerce") / 1000.0,
+        "prm":          df["PRM"].iloc[0] if "PRM" in df.columns else None,
+    }).dropna(subset=["timestamp", "puissance_kw"])\
+      .sort_values("timestamp").drop_duplicates("timestamp").reset_index(drop=True)
+
+    # Détection automatique du pas depuis les données
+    if len(df_clean) >= 2:
+        delta = int((df_clean["timestamp"].iloc[1] - df_clean["timestamp"].iloc[0]).seconds // 60)
+    else:
+        delta = 15
+    return _finaliser_dataframe(df_clean, f"PT{delta}M")
+
+
 # ─────────────────────────────────────────────
 # 2c. DÉTECTION AUTOMATIQUE DU FORMAT
 # ─────────────────────────────────────────────
@@ -216,12 +250,18 @@ def charger_fichier_auto(filepath_or_buffer) -> Tuple[pd.DataFrame, str]:
     if "Horodate" in premiere_ligne:
         return charger_fichier_enedis(buffer), "Enedis R63"
     elif "Date de la mesure" in premiere_ligne:
-        return charger_fichier_likewatt(buffer), "Likewatt"
+        # Détection de la variante : compact (date+heure fusionnées, colonne "Puissance (W)")
+        # vs standard (date et heure séparées, colonne "PA")
+        if "Puissance (W)" in premiere_ligne:
+            return charger_fichier_likewatt_compact(buffer), "Likewatt compact"
+        else:
+            return charger_fichier_likewatt(buffer), "Likewatt"
     else:
         raise ValueError(
             "Format de fichier non reconnu. "
-            "Formats supportés : Enedis SGE R63 (colonne 'Horodate') "
-            "ou Likewatt (colonnes 'Date de la mesure' / 'Heure de la mesure' / 'PA')."
+            "Formats supportés : Enedis SGE R63 (colonne 'Horodate'), "
+            "Likewatt standard (colonnes 'Date de la mesure' / 'Heure de la mesure' / 'PA'), "
+            "Likewatt compact (colonnes 'Date de la mesure' / 'Puissance (W)')."
         )
 
 
@@ -390,20 +430,9 @@ def _construire_cache(
             p: np.sort(df[df["plage"] == p]["puissance_kw"].dropna().values)
             for p in PLAGES_BT_SUP
         }
-
-        # Tableaux par mois × plage pour la CMDPS mensuelle avec plafonnement TURPE 7
-        pw_mois_plage_bt: Dict[tuple, np.ndarray] = {}
-        energies_mois_bt: Dict[tuple, float]     = {}
-        for (mois, plage), groupe in df.groupby([df["timestamp"].dt.month, "plage"]):
-            vals = groupe["puissance_kw"].dropna().values
-            pw_mois_plage_bt[(mois, plage)] = np.sort(vals)
-            energies_mois_bt[(mois, plage)] = float(groupe["puissance_kw"].sum())
-
         cache.update({
             "bi": bi, "ci": ci, "ordre": ordre, "bi_ordre": bi_ordre,
             "cs_energie": cs_energie, "pw_plage": pw_plage,
-            "pw_mois_plage_bt": pw_mois_plage_bt,
-            "energies_mois_bt": energies_mois_bt,
         })
 
     else:  # BT ≤ 36 kVA
@@ -440,15 +469,15 @@ def _cout_depuis_cache(cache: Dict, puissances_souscrites: Dict[str, float]) -> 
 
         cs = cs_puissance + cache["cs_energie"]
 
-        # CMDPS HTA : formule officielle TURPE 7 (p.10 délibération 2025-78)
-        # CMDPS = 2 × Σ_i [ 0.04 × b_i × √(Σ_t ΔP_t²) ]  (ΔP par pas 10 min)
+        # CMDPS HTA : sqrt(sum(deltas²)) par mois/plage via searchsorted
         cmdps = 0.0
         for (mois, plage), arr in cache["pw_mois_plage"].items():
             ps  = puissances_souscrites.get(plage, 0)
+            # Éléments > ps : arr[idx_start:]
             idx = np.searchsorted(arr, ps, side="right")
             if idx < len(arr):
                 deltas = arr[idx:] - ps
-                cmdps += 2 * 0.04 * bi[plage] * np.sqrt(np.dot(deltas, deltas))
+                cmdps += 0.04 * bi[plage] * np.sqrt(np.dot(deltas, deltas))
         cmdps *= fact_ann
 
     elif domaine == "BT > 36 kVA":
@@ -462,46 +491,12 @@ def _cout_depuis_cache(cache: Dict, puissances_souscrites: Dict[str, float]) -> 
 
         cs = cs_puissance + cache["cs_energie"]
 
-        # CMDPS BT>36 kVA : formule TURPE 7 — 12,41 €/h de dépassement
-        # Plafonnement mensuel sur demande (art. D du TURPE 7) :
-        #   si CMDPS_mois > 30 % facture mensuelle ET > 25 × tarif PS supplémentaire
-        #   → plafond = max(30 % facture mensuelle, 25 × tarif PS supplémentaire)
-        bi_bt    = cache["bi"]
-        ci_bt    = cache["ci"]
-        mois_set = set(m for (m, p) in cache["pw_mois_plage_bt"])
-        cmdps    = 0.0
-        for mois in mois_set:
-            h_mois       = 0
-            max_dep      = {}   # dépassement max par plage ce mois (kVA)
-            for plage in PLAGES_BT_SUP:
-                arr = cache["pw_mois_plage_bt"].get((mois, plage), np.array([]))
-                if len(arr) == 0:
-                    continue
-                ps  = puissances_souscrites[plage]
-                idx = np.searchsorted(arr, ps, side="right")
-                h   = int(len(arr) - idx)
-                h_mois += h
-                if h > 0:
-                    max_dep[plage] = float(arr[-1] - ps)   # ΔPS max ce mois
-
-            cmdps_mois = 12.41 * h_mois
-
-            if cmdps_mois > 0 and max_dep:
-                # Composante énergie mensuelle (pour reconstituer la facture mensuelle)
-                cs_en_mois = sum(
-                    (ci_bt[p] / 100) * cache["energies_mois_bt"].get((mois, p), 0.0)
-                    for p in PLAGES_BT_SUP
-                )
-                facture_mois = (cg + cc + cs_puissance) / 12 + cs_en_mois + cmdps_mois
-                cap_30pct    = 0.30 * facture_mois
-                # Tarif PS supplémentaire = coût annuel de l'extra PS / 12
-                suppl_cost   = sum(bi_bt[p] * dep for p, dep in max_dep.items()) / 12
-                cap_25x      = 25 * suppl_cost
-                if cmdps_mois > cap_30pct and cmdps_mois > cap_25x:
-                    cmdps_mois = max(cap_30pct, cap_25x)
-
-            cmdps += cmdps_mois
-        cmdps *= fact_ann
+        # CMDPS BT>36 : nb heures dépassement × 12.41, searchsorted O(log n)
+        heures_dep = 0
+        for p, arr in cache["pw_plage"].items():
+            ps  = puissances_souscrites[p]
+            heures_dep += len(arr) - np.searchsorted(arr, ps, side="right")
+        cmdps = 12.41 * heures_dep * fact_ann
 
     else:  # BT ≤ 36 kVA
         ps_unique    = list(puissances_souscrites.values())[0]
@@ -566,14 +561,13 @@ def calculer_cout_total(
         cs_energie = sum((ci[p] / 100) * energies.get(p, 0) * fact_ann for p in PLAGES_HTA)
         cs = cs_puissance + cs_energie
 
-        # CMDPS HTA : TURPE 7 — formule officielle avec facteur 2
         col_p = "puissance_kw_10min" if "puissance_kw_10min" in df.columns else "puissance_kw"
         cmdps = 0.0
         for (_, plage), groupe in df.groupby([df["timestamp"].dt.month, "plage"]):
             ps     = puissances_souscrites.get(plage, 0)
             deltas = np.maximum(0, groupe[col_p].values - ps)
             if deltas.sum() > 0:
-                cmdps += 2 * 0.04 * bi[plage] * np.sqrt(np.sum(deltas ** 2))
+                cmdps += 0.04 * bi[plage] * np.sqrt(np.sum(deltas ** 2))
         cmdps *= fact_ann
 
     elif domaine == "BT > 36 kVA":
@@ -591,35 +585,11 @@ def calculer_cout_total(
         cs_energie = sum((ci[p] / 100) * energies.get(p, 0) * fact_ann for p in PLAGES_BT_SUP)
         cs = cs_puissance + cs_energie
 
-        # CMDPS BT>36 kVA — calcul mensuel avec plafonnement TURPE 7
-        cmdps = 0.0
-        for mois, grp_mois in df.groupby(df["timestamp"].dt.month):
-            h_mois  = 0
-            max_dep = {}
-            for plage in PLAGES_BT_SUP:
-                ps       = puissances_souscrites.get(plage, 0)
-                sub      = grp_mois[grp_mois["plage"] == plage]["puissance_kw"].dropna()
-                h        = int((sub > ps).sum())
-                h_mois  += h
-                if h > 0:
-                    max_dep[plage] = float(sub.max() - ps)
-
-            cmdps_mois = 12.41 * h_mois
-
-            if cmdps_mois > 0 and max_dep:
-                cs_en_mois = sum(
-                    (ci[p] / 100) * float(grp_mois[grp_mois["plage"] == p]["puissance_kw"].sum())
-                    for p in PLAGES_BT_SUP
-                )
-                facture_mois = (cg + cc + cs_puissance) / 12 + cs_en_mois + cmdps_mois
-                cap_30pct    = 0.30 * facture_mois
-                suppl_cost   = sum(bi[p] * dep for p, dep in max_dep.items()) / 12
-                cap_25x      = 25 * suppl_cost
-                if cmdps_mois > cap_30pct and cmdps_mois > cap_25x:
-                    cmdps_mois = max(cap_30pct, cap_25x)
-
-            cmdps += cmdps_mois
-        cmdps *= fact_ann
+        heures_dep = sum(
+            (df[df["plage"] == p]["puissance_kw"] > ps).sum()
+            for p, ps in puissances_souscrites.items()
+        )
+        cmdps = 12.41 * heures_dep * fact_ann
 
     else:  # BT ≤ 36 kVA
         ps_unique = list(puissances_souscrites.values())[0]
