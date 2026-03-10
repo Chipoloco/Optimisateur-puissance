@@ -984,12 +984,13 @@ bi_sim      = HTA_BI[fta_opt] if domaine == "HTA" else (BT_SUP_BI[fta_opt] if do
 col_risq1, col_risq2 = st.columns([1, 2])
 with col_risq1:
     hausse_pct = st.slider(
-        "📈 Simulation hausse de conso (%)", 0, 30, 0, step=5,
+        "📈 Hausse de consommation (%)", 0, 30, 0, step=5,
         help="Simule une augmentation homothétique de la courbe de charge"
     )
-    ps_reduc   = st.slider(
-        "🔽 Simulation réduction de PS (kVA)", 0, 20, 0, step=1,
-        help="Simule une réduction de toutes les PS optimales"
+    delta_ps = st.slider(
+        "↕️ Écart à la PS optimale (kVA)", -20, 20, 0, step=1,
+        help="Ajuste les PS simulées par rapport aux PS optimisées. "
+             "Valeur négative = PS plus basse (plus de risque), positive = PS plus haute (moins de risque)"
     )
 
 # Courbe simulée
@@ -997,7 +998,7 @@ facteur_sim = 1.0 + hausse_pct / 100.0
 df_sim      = df_opt.copy()
 df_sim["puissance_kw_sim"] = df_sim["puissance_kw"] * facteur_sim
 
-ps_simul = {p: max(1, int(v) - ps_reduc) for p, v in ps_sim_opt.items()}
+ps_simul = {p: max(1, int(v) + delta_ps) for p, v in ps_sim_opt.items()}
 
 # Calcul dépassements par plage
 rows_risque = []
@@ -1037,10 +1038,14 @@ with col_risq2:
 
         def style_risque(row):
             n = str(row.get("Niveau de risque", ""))
-            if "🔴" in n: return ["background-color: #FFCDD2"] * len(row)
-            if "🟠" in n: return ["background-color: #FFE0B2"] * len(row)
-            if "🟡" in n: return ["background-color: #FFF9C4"] * len(row)
-            return [""] * len(row)
+            # Couleurs sur le texte (compatibles fond noir et fond blanc)
+            if "🔴" in n:
+                return ["color: #FF5252; font-weight: bold"] * len(row)
+            if "🟠" in n:
+                return ["color: #FF9800; font-weight: bold"] * len(row)
+            if "🟡" in n:
+                return ["color: #FFD600; font-weight: bold"] * len(row)
+            return ["color: #69F0AE; font-weight: bold"] * len(row)
 
         st.dataframe(df_risque.style.apply(style_risque, axis=1),
                      use_container_width=True, hide_index=True)
@@ -1064,7 +1069,7 @@ with col_risq2:
                 ))
             fig_risque.update_layout(
                 barmode="overlay",
-                title=f"Distribution des dépassements — hausse conso +{hausse_pct}%, PS réduite −{ps_reduc} kVA",
+                title=f"Distribution des dépassements — hausse conso +{hausse_pct}%, écart PS {delta_ps:+d} kVA",
                 xaxis_title="Dépassement (kW au-dessus de la PS)",
                 yaxis_title="Nombre d'heures",
                 height=280,
