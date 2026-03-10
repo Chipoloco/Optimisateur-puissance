@@ -124,33 +124,29 @@ def _mpl_projection(nb_annees, eco_annuelle) -> bytes:
     plt.close(fig)
     return buf.getvalue()
 
+
 def _mpl_sensibilite(df_scenarios, resultat_optimal, couleurs) -> bytes:
     """Courbes de sensibilité coût vs PS par plage — matplotlib."""
-    import matplotlib
-    matplotlib.use("Agg")
+    import matplotlib; matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    import numpy as np
-
     plages = sorted(df_scenarios["plage_variee"].unique()) if "plage_variee" in df_scenarios.columns else []
     if not plages:
         fig, ax = plt.subplots(figsize=(9, 2.2))
         ax.text(0.5, 0.5, "Données de sensibilité non disponibles",
                 ha="center", va="center", transform=ax.transAxes, fontsize=9)
         buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=110); plt.close(fig); return buf.getvalue()
-
     fig, ax = plt.subplots(figsize=(9, 2.6))
     for plage in plages:
         df_s  = df_scenarios[df_scenarios["plage_variee"] == plage].sort_values("ps_variee")
         color = couleurs.get(plage, "#888")
-        ax.plot(df_s["ps_variee"], df_s["Total_HT"],
-                color=color, linewidth=1.8, label=plage, marker="o", markersize=2.5)
+        ax.plot(df_s["ps_variee"], df_s["Total_HT"], color=color, linewidth=1.8,
+                label=plage, marker="o", markersize=2.5)
         ps_opt = resultat_optimal["puissances_souscrites"].get(plage, None)
         if ps_opt is not None:
             ax.axvline(ps_opt, color=color, linestyle=":", linewidth=0.9, alpha=0.8)
             y_opt = df_s.loc[df_s["ps_variee"] == ps_opt, "Total_HT"]
             if not y_opt.empty:
                 ax.scatter([ps_opt], [y_opt.values[0]], color=color, s=30, zorder=5)
-
     ax.set_xlabel("Puissance souscrite (kVA)", fontsize=8)
     ax.set_ylabel("Coût total HT (€/an)", fontsize=8)
     ax.set_title("Sensibilité du coût TURPE+CTA selon la PS par plage", fontsize=9)
@@ -158,10 +154,7 @@ def _mpl_sensibilite(df_scenarios, resultat_optimal, couleurs) -> bytes:
     ax.tick_params(labelsize=7)
     ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:,.0f}"))
     fig.tight_layout()
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=130)
-    plt.close(fig)
-    return buf.getvalue()
+    buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=130); plt.close(fig); return buf.getvalue()
 
 
 # ─────────────────────────────────────────────
@@ -187,12 +180,12 @@ def generer_pdf(
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
-        leftMargin=2*cm, rightMargin=2*cm,
-        topMargin=2.5*cm, bottomMargin=2*cm,
+        leftMargin=1.5*cm, rightMargin=1.5*cm,
+        topMargin=1.8*cm, bottomMargin=1.5*cm,
     )
 
     W, H = A4
-    content_w = W - 4*cm
+    content_w = W - 3*cm
 
     # ── Styles ────────────────────────────────────────────────────────────────
     styles = getSampleStyleSheet()
@@ -201,17 +194,17 @@ def generer_pdf(
     VERT  = colors.HexColor("#2E7D32")
     ROUGE = colors.HexColor("#C62828")
 
-    s_titre      = ParagraphStyle("titre",    fontSize=16, textColor=BLEU,  spaceAfter=8,  fontName="Helvetica-Bold")
-    s_sous_titre = ParagraphStyle("soustitre",fontSize=8,  textColor=colors.HexColor("#455A64"), spaceAfter=10, fontName="Helvetica")
-    s_h2         = ParagraphStyle("h2",       fontSize=11, textColor=BLEU,  spaceBefore=8, spaceAfter=4, fontName="Helvetica-Bold")
-    s_date       = ParagraphStyle("date",     fontSize=8,  textColor=colors.HexColor("#78909C"), alignment=TA_RIGHT, fontName="Helvetica")
-    s_kpi_label  = ParagraphStyle("kpilbl",   fontSize=8,  textColor=colors.HexColor("#546E7A"), alignment=TA_CENTER, fontName="Helvetica")
-    s_kpi_val    = ParagraphStyle("kpival",   fontSize=15, textColor=BLEU,  alignment=TA_CENTER, fontName="Helvetica-Bold")
-    s_kpi_eco    = ParagraphStyle("kpieco",   fontSize=15, textColor=VERT,  alignment=TA_CENTER, fontName="Helvetica-Bold")
-    s_kpi_neg    = ParagraphStyle("kpineg",   fontSize=15, textColor=ROUGE, alignment=TA_CENTER, fontName="Helvetica-Bold")
-    s_cell       = ParagraphStyle("cell",     fontSize=8,  fontName="Helvetica", wordWrap="CJK")
-    s_cell_bold  = ParagraphStyle("cellbold", fontSize=8,  fontName="Helvetica-Bold", wordWrap="CJK")
-    s_footer     = ParagraphStyle("footer",   fontSize=7,  textColor=colors.HexColor("#90A4AE"), alignment=TA_CENTER, fontName="Helvetica")
+    s_titre      = ParagraphStyle("titre",    fontSize=13, textColor=BLEU,  spaceAfter=4,  fontName="Helvetica-Bold")
+    s_sous_titre = ParagraphStyle("soustitre",fontSize=7,  textColor=colors.HexColor("#455A64"), spaceAfter=4, fontName="Helvetica")
+    s_h2         = ParagraphStyle("h2",       fontSize=9,  textColor=BLEU,  spaceBefore=5, spaceAfter=2, fontName="Helvetica-Bold")
+    s_date       = ParagraphStyle("date",     fontSize=7,  textColor=colors.HexColor("#78909C"), alignment=TA_RIGHT, fontName="Helvetica")
+    s_kpi_label  = ParagraphStyle("kpilbl",   fontSize=7,  textColor=colors.HexColor("#546E7A"), alignment=TA_CENTER, fontName="Helvetica")
+    s_kpi_val    = ParagraphStyle("kpival",   fontSize=12, textColor=BLEU,  alignment=TA_CENTER, fontName="Helvetica-Bold")
+    s_kpi_eco    = ParagraphStyle("kpieco",   fontSize=12, textColor=VERT,  alignment=TA_CENTER, fontName="Helvetica-Bold")
+    s_kpi_neg    = ParagraphStyle("kpineg",   fontSize=12, textColor=ROUGE, alignment=TA_CENTER, fontName="Helvetica-Bold")
+    s_cell       = ParagraphStyle("cell",     fontSize=7,  fontName="Helvetica", wordWrap="CJK")
+    s_cell_bold  = ParagraphStyle("cellbold", fontSize=7,  fontName="Helvetica-Bold", wordWrap="CJK")
+    s_footer     = ParagraphStyle("footer",   fontSize=6,  textColor=colors.HexColor("#90A4AE"), alignment=TA_CENTER, fontName="Helvetica")
 
     # Variables dérivées
     fta_change           = fta_opt != fta
@@ -249,13 +242,13 @@ def generer_pdf(
         ("FONTSIZE",  (0,0), (-1,-1), 8),
         ("ROWBACKGROUNDS", (0,0), (-1,-1), [colors.white, GRIS]),
         ("GRID",      (0,0), (-1,-1), 0.3, colors.HexColor("#CFD8DC")),
-        ("TOPPADDING",    (0,0), (-1,-1), 4),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+        ("TOPPADDING",    (0,0), (-1,-1), 2),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
     ]))
     story.append(KeepTogether([
         Paragraph("Informations du site", s_h2),
         t_site,
-        Spacer(1, 6),
+        Spacer(1, 3),
     ]))
 
     # ── KPIs ─────────────────────────────────────────────────────────────────
@@ -292,13 +285,13 @@ def generer_pdf(
         ("INNERGRID",  (0,0), (-1,-1), 0.5, colors.HexColor("#CFD8DC")),
         ("BACKGROUND", (0,0), (-1,0),  colors.HexColor("#E3F2FD")),
         ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
-        ("TOPPADDING",    (0,0), (-1,-1), 10),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 10),
+        ("TOPPADDING",    (0,0), (-1,-1), 6),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
     ]))
     story.append(KeepTogether([
         Paragraph("Résultats de l'optimisation (TURPE + CTA — HT)", s_h2),
         t_kpi,
-        Spacer(1, 6),
+        Spacer(1, 3),
     ]))
 
     # ── TABLEAU PS ───────────────────────────────────────────────────────────
@@ -338,13 +331,13 @@ def generer_pdf(
         ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, GRIS]),
         ("GRID",       (0,0), (-1,-1), 0.3, colors.HexColor("#CFD8DC")),
         ("ALIGN",      (1,0), (-1,-1), "CENTER"),
-        ("TOPPADDING",    (0,0), (-1,-1), 4),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+        ("TOPPADDING",    (0,0), (-1,-1), 2),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
     ]))
     story.append(KeepTogether([
         Paragraph("Puissances souscrites recommandées", s_h2),
         t_ps,
-        Spacer(1, 6),
+        Spacer(1, 3),
     ]))
 
     # ── TABLEAU COMPARATIF FTA ────────────────────────────────────────────────
@@ -376,13 +369,13 @@ def generer_pdf(
             ("BACKGROUND",     (0,1), (-1,1),  colors.HexColor("#C8E6C9")),
             ("GRID",           (0,0), (-1,-1), 0.3, colors.HexColor("#CFD8DC")),
             ("ALIGN",          (2,0), (-1,-1), "RIGHT"),
-            ("TOPPADDING",     (0,0), (-1,-1), 3),
-            ("BOTTOMPADDING",  (0,0), (-1,-1), 3),
+            ("TOPPADDING",     (0,0), (-1,-1), 2),
+            ("BOTTOMPADDING",  (0,0), (-1,-1), 2),
         ]))
         story.append(KeepTogether([
             Paragraph("Comparaison des formules tarifaires (PS optimisées)", s_h2),
             t_fta,
-            Spacer(1, 6),
+            Spacer(1, 3),
         ]))
 
     # ── TABLEAU COMPOSANTES ───────────────────────────────────────────────────
@@ -435,8 +428,8 @@ def generer_pdf(
         ("BACKGROUND",  (0, len(compo_list)), (-1, len(compo_list)), colors.HexColor("#E3F2FD")),
         ("GRID",        (0,0), (-1,-1), 0.3, colors.HexColor("#CFD8DC")),
         ("ALIGN",       (1,0), (-1,-1), "RIGHT"),
-        ("TOPPADDING",    (0,0), (-1,-1), 4),
-        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+        ("TOPPADDING",    (0,0), (-1,-1), 2),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 2),
         ("VALIGN",      (0,0), (-1,-1), "MIDDLE"),
     ]
     t_comp.setStyle(TableStyle(style_comp))
@@ -446,17 +439,14 @@ def generer_pdf(
         Spacer(1, 3),
     ]))
 
-    # ── GRAPHIQUES — page 2 (4 graphiques compacts) ───────────────────────────
+    # ── GRAPHIQUES — page 2 (4 graphiques compacts) ─────────────────────────
     story.append(PageBreak())
     story.append(Paragraph(
         (nom_etude or "Étude d'optimisation") + " — " + datetime.now().strftime("%d/%m/%Y"),
         s_date))
     story.append(HRFlowable(width="100%", thickness=0.8, color=BLEU, spaceAfter=4))
-
-    # Hauteur uniforme : 4 graphiques en une page
     gh = content_w * 2.05 / 9
 
-    # 1. Courbe de charge
     png_courbe = _mpl_courbe_charge(df, COULEURS_PLAGES)
     story.append(KeepTogether([
         Paragraph("Courbe de charge par plage horosaisonnière", s_h2),
@@ -464,7 +454,6 @@ def generer_pdf(
         Spacer(1, 3),
     ]))
 
-    # 2. Comparaison composantes
     compo_graph_pdf  = ["CG", "CC", "CS", "CMDPS", "CTA_HT"]
     labels_graph_pdf = ["Gestion", "Comptage", "Soutirage", "Dépassement", "CTA HT"]
     png_compo = _mpl_composantes(
@@ -480,7 +469,6 @@ def generer_pdf(
         Spacer(1, 3),
     ]))
 
-    # 3. Analyse de sensibilité
     df_sc_pdf = df_scenarios if df_scenarios is not None else (
         resultats_fta.get(fta_opt, {}).get("scenarios", None))
     if df_sc_pdf is not None and "plage_variee" in df_sc_pdf.columns:
@@ -491,7 +479,6 @@ def generer_pdf(
             Spacer(1, 3),
         ]))
 
-    # 4. Projection pluriannuelle
     png_proj = _mpl_projection(nb_annees, max(0, economie_cta))
     story.append(KeepTogether([
         Paragraph(f"Projection sur {nb_annees} ans — économie cumulée : {max(0, economie_cta)*nb_annees:,.0f} €", s_h2),
@@ -586,6 +573,16 @@ with st.sidebar:
              "celle qui minimise TURPE + CTA HT. Les PS sont optimisées "
              "pour chaque FTA candidate. Prix de fourniture non affectés.",
     )
+
+    hausse_projection_pct = st.slider(
+        "📈 Hausse prévisionnelle de conso (%)", 0, 50, 0, step=5,
+        help="L'optimisation calcule les PS pour une consommation augmentée de X%. "
+             "Utilisez ce paramètre si vous anticipez une croissance d'activité, "
+             "un nouvel équipement ou un changement de process. "
+             "Les coûts affichés reflètent alors la situation projetée."
+    )
+    if hausse_projection_pct > 0:
+        st.caption(f"⚡ PS optimisées pour +{hausse_projection_pct}% de consommation")
 
 
 # ─────────────────────────────────────────────
@@ -704,8 +701,22 @@ st.divider()
 # ─────────────────────────────────────────────
 st.header("💡 Optimisation — Puissances & Formule Tarifaire")
 
-# ── Calcul du coût actuel ──────────────────────────────────────────────────────
+# ── Calcul du coût actuel (données brutes, sans hausse prévisionnelle) ────────
 resultat_actuel = calculer_cout_total(df.copy(), domaine, fta, ps_actuelles, type_contrat)
+
+# ── Helper : appliquer un facteur de hausse au DataFrame ──────────────────────
+def _appliquer_hausse(df_in: pd.DataFrame, pct: float) -> pd.DataFrame:
+    """Multiplie puissance_kw (et puissance_kw_10min si présent) par (1 + pct/100).
+    Préserve les attrs du DataFrame (facteur_annualisation, etc.)."""
+    if pct == 0:
+        return df_in
+    attrs_bak = df_in.attrs.copy()
+    df_out = df_in.copy()
+    df_out["puissance_kw"] = df_out["puissance_kw"] * (1.0 + pct / 100.0)
+    if "puissance_kw_10min" in df_out.columns:
+        df_out["puissance_kw_10min"] = df_out["puissance_kw_10min"] * (1.0 + pct / 100.0)
+    df_out.attrs = attrs_bak
+    return df_out
 
 # ── Optimisation ──────────────────────────────────────────────────────────────
 FTA_PAR_DOMAINE = {
@@ -720,15 +731,17 @@ resultats_fta = {}
 spinner_msg = "⏳ Optimisation sur toutes les formules tarifaires..." if optimiser_fta else "⏳ Optimisation en cours..."
 with st.spinner(spinner_msg):
     for fta_cand in fta_candidates:
-        df_cand = classifier_dataframe(df_raw, domaine, fta_cand, hc_debut, hc_fin)
+        df_cand     = classifier_dataframe(df_raw, domaine, fta_cand, hc_debut, hc_fin)
+        df_cand_opt = _appliquer_hausse(df_cand, hausse_projection_pct)   # projeté pour l'optimisation
         res_opt_cand, df_sc_cand = optimiser_puissances(
-            df_cand, domaine, fta_cand, type_contrat, pas_kva,
+            df_cand_opt, domaine, fta_cand, type_contrat, pas_kva,
             ps_actuelles=ps_actuelles if fta_cand == fta else None,
         )
         resultats_fta[fta_cand] = {
             "resultat":  res_opt_cand,
             "scenarios": df_sc_cand,
-            "df_classe": df_cand,
+            "df_classe": df_cand,   # df NON projeté conservé pour l'affichage courbe de charge
+            "df_proj":   df_cand_opt,
         }
 
 # Meilleure FTA = celle dont le Total_HT optimisé est le plus bas
@@ -743,6 +756,15 @@ economie         = resultat_actuel["Total"]    - resultat_optimal["Total"]
 economie_cta     = resultat_actuel["Total_HT"] - resultat_optimal["Total_HT"]
 economie_pct     = (economie     / resultat_actuel["Total"]    * 100) if resultat_actuel["Total"]    > 0 else 0
 economie_cta_pct = (economie_cta / resultat_actuel["Total_HT"] * 100) if resultat_actuel["Total_HT"] > 0 else 0
+
+# ── Note de projection ───────────────────────────────────────────────────────
+if hausse_projection_pct > 0:
+    st.info(
+        f"📈 **Optimisation avec hausse prévisionnelle +{hausse_projection_pct}%** — "
+        f"Les puissances souscrites et les coûts affichés tiennent compte d'une "
+        f"consommation augmentée de {hausse_projection_pct}%. "
+        f"Le coût actuel est calculé sur les données d'origine (sans hausse)."
+    )
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────
 if fta_change:
@@ -921,7 +943,67 @@ st.divider()
 # ─────────────────────────────────────────────
 st.header("📈 Analyse de sensibilité")
 
-if "plage_variee" in df_scenarios.columns:
+if domaine == "BT ≤ 36 kVA" and "ps_variee" in df_scenarios.columns:
+    # ── BT≤36 : graphique unique avec zone coupure ──────────────────────────
+    pmax_obs = df_opt["puissance_kw"].max()
+    p_min_safe = int(np.ceil(pmax_obs))
+    ps_opt_unique = resultat_optimal["puissances_souscrites"].get("unique", p_min_safe)
+
+    # Séparer zone coupure / zone sûre
+    has_coupure_col = "zone_coupure" in df_scenarios.columns
+    if has_coupure_col:
+        df_safe   = df_scenarios[~df_scenarios["zone_coupure"]].sort_values("ps_variee")
+        df_coupe  = df_scenarios[ df_scenarios["zone_coupure"]].sort_values("ps_variee")
+    else:
+        df_safe   = df_scenarios[df_scenarios["ps_variee"] >= p_min_safe].sort_values("ps_variee")
+        df_coupe  = df_scenarios[df_scenarios["ps_variee"] <  p_min_safe].sort_values("ps_variee")
+
+    fig_sens = go.Figure()
+    if not df_coupe.empty:
+        fig_sens.add_trace(go.Scatter(
+            x=df_coupe["ps_variee"], y=df_coupe["Total_HT"],
+            mode="lines+markers",
+            name="⚡ Zone coupure Linky (PS < Pmax)",
+            line=dict(color="#FF5252", width=2, dash="dot"),
+            marker=dict(size=4, symbol="x"),
+        ))
+    if not df_safe.empty:
+        fig_sens.add_trace(go.Scatter(
+            x=df_safe["ps_variee"], y=df_safe["Total_HT"],
+            mode="lines+markers",
+            name="✅ Zone sûre (PS ≥ Pmax)",
+            line=dict(color="#4CAF50", width=2),
+            marker=dict(size=4),
+        ))
+    # Ligne Pmax observée
+    fig_sens.add_vline(x=p_min_safe, line_dash="dash", line_color="#FF9800",
+                       annotation_text=f"Pmax = {pmax_obs:.1f} kW",
+                       annotation_font_size=9)
+    # PS optimale
+    fig_sens.add_vline(x=ps_opt_unique, line_dash="dot", line_color="#4CAF50",
+                       annotation_text=f"✅ Opt. {ps_opt_unique} kVA",
+                       annotation_font_size=9)
+    # PS actuelle
+    ps_act_unique = ps_actuelles.get("unique", 0)
+    if ps_act_unique:
+        fig_sens.add_vline(x=ps_act_unique, line_dash="dash", line_color="#90CAF9",
+                           annotation_text=f"📌 Actuel {ps_act_unique} kVA",
+                           annotation_font_size=9)
+    fig_sens.update_layout(
+        title="Sensibilité du coût TURPE+CTA — Linky (la zone rouge entraîne des coupures)",
+        xaxis_title="Puissance souscrite (kVA)",
+        yaxis_title="Coût TURPE+CTA HT (€/an)",
+        height=380,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+    )
+    st.plotly_chart(fig_sens, use_container_width=True)
+    st.caption(
+        "⚡ La zone pointillée rouge représente des PS inférieures à la puissance max observée : "
+        "le Linky couperait l'alimentation. **Ces valeurs ne sont jamais recommandées par l'optimiseur.**"
+    )
+
+elif "plage_variee" in df_scenarios.columns:
+    # ── HTA / BT>36 : graphique par plage ───────────────────────────────────
     mode_superpose = st.checkbox("Superposer toutes les plages sur un même graphique", value=True)
 
     if mode_superpose:
@@ -929,7 +1011,7 @@ if "plage_variee" in df_scenarios.columns:
         for plage in df_scenarios["plage_variee"].unique():
             df_s = df_scenarios[df_scenarios["plage_variee"] == plage].sort_values("ps_variee")
             fig_sens.add_trace(go.Scatter(
-                x=df_s["ps_variee"], y=df_s["Total"],
+                x=df_s["ps_variee"], y=df_s["Total_HT"],
                 mode="lines+markers",
                 name=plage,
                 line=dict(color=COULEURS_PLAGES.get(plage, "#888"), width=2),
@@ -943,9 +1025,9 @@ if "plage_variee" in df_scenarios.columns:
                 annotation_font_size=9,
             )
         fig_sens.update_layout(
-            title="Sensibilité du coût TURPE HT — toutes plages superposées",
+            title="Sensibilité du coût TURPE+CTA HT — toutes plages superposées",
             xaxis_title="Puissance souscrite (kVA)",
-            yaxis_title="Coût TURPE HT annualisé (€/an)",
+            yaxis_title="Coût TURPE+CTA HT annualisé (€/an)",
             height=400,
             legend=dict(orientation="h", yanchor="bottom", y=1.02),
         )
@@ -955,10 +1037,10 @@ if "plage_variee" in df_scenarios.columns:
         df_sens   = df_scenarios[df_scenarios["plage_variee"] == plage_sel].sort_values("ps_variee")
         fig_sens = go.Figure()
         fig_sens.add_trace(go.Scatter(
-            x=df_sens["ps_variee"], y=df_sens["Total"],
+            x=df_sens["ps_variee"], y=df_sens["Total_HT"],
             mode="lines+markers",
             line=dict(color=COULEURS_PLAGES.get(plage_sel, "#2196F3"), width=2),
-            name="Coût total (€/an)",
+            name="Coût total HT (€/an)",
         ))
         fig_sens.add_vline(x=resultat_optimal["puissances_souscrites"].get(plage_sel, 0),
                            line_dash="dash", line_color="#4CAF50", annotation_text="✅ Optimal")
@@ -966,7 +1048,7 @@ if "plage_variee" in df_scenarios.columns:
                            line_dash="dash", line_color="#FF4444", annotation_text="📌 Actuel")
         fig_sens.update_layout(
             title=f"Sensibilité du coût — {plage_sel}",
-            xaxis_title="Puissance souscrite (kVA)", yaxis_title="€/an", height=340,
+            xaxis_title="Puissance souscrite (kVA)", yaxis_title="€/an HT", height=340,
         )
         st.plotly_chart(fig_sens, use_container_width=True)
 
@@ -977,107 +1059,133 @@ st.divider()
 # ─────────────────────────────────────────────
 st.header("⚠️ Simulation du risque de dépassement")
 
-# Utilise la PS optimale + la courbe de charge classifiée avec FTA optimale
-ps_sim_opt  = resultat_optimal["puissances_souscrites"]
-bi_sim      = HTA_BI[fta_opt] if domaine == "HTA" else (BT_SUP_BI[fta_opt] if domaine == "BT > 36 kVA" else {})
+# ── Règle réglementaire par domaine ──────────────────────────────────────────
+# BT ≤ 36 kVA : disjoncteur électronique Linky → COUPURE IMMÉDIATE à la PS.
+#   Dépassement physiquement impossible. Aucune CMDPS — interruption de fourniture.
+# BT > 36 kVA : compteur PME sans coupure automatique → dépassement POSSIBLE.
+#   Conséquence : CMDPS 12,41 €/h × nb heures (+ capping mensuel TURPE 7).
+# HTA : pas de coupure automatique à la PS → dépassement POSSIBLE (limite = Praccordement).
+#   Conséquence : CMDPS quadratique 2×0,04×bᵢ×√ΣΔP².
+
+ps_sim_opt = resultat_optimal["puissances_souscrites"]
+bi_sim     = HTA_BI[fta_opt] if domaine == "HTA" else (BT_SUP_BI[fta_opt] if domaine == "BT > 36 kVA" else {})
+fact_ann   = df_opt.attrs.get("facteur_annualisation", 1.0)
 
 col_risq1, col_risq2 = st.columns([1, 2])
 with col_risq1:
     hausse_pct = st.slider(
-        "📈 Hausse de consommation (%)", 0, 30, 0, step=5,
-        help="Simule une augmentation homothétique de la courbe de charge"
+        "📈 Hausse de consommation (%)", 0, 60, hausse_projection_pct, step=5,
+        help="Simule une augmentation homothétique de la courbe de charge. "
+             "La valeur par défaut correspond à la hausse prévisionnelle paramétrée."
     )
     delta_ps = st.slider(
         "↕️ Écart à la PS optimale (kVA)", -20, 20, 0, step=1,
-        help="Ajuste les PS simulées par rapport aux PS optimisées. "
-             "Valeur négative = PS plus basse (plus de risque), positive = PS plus haute (moins de risque)"
+        help="Valeur négative = PS plus basse (risque de dépassement accru), "
+             "positive = marge de sécurité supplémentaire."
     )
 
-# Courbe simulée
+# Courbe simulée — appliquée sur df_opt (données non projetées)
 facteur_sim = 1.0 + hausse_pct / 100.0
-df_sim      = df_opt.copy()
+df_sim = df_opt.copy()
 df_sim["puissance_kw_sim"] = df_sim["puissance_kw"] * facteur_sim
-
 ps_simul = {p: max(1, int(v) + delta_ps) for p, v in ps_sim_opt.items()}
 
-# Calcul dépassements par plage
+# ── Calcul par plage ──────────────────────────────────────────────────────────
 rows_risque = []
 for plage in ps_simul:
-    df_p     = df_sim[df_sim["plage"] == plage]
+    df_p = df_sim[df_sim["plage"] == plage]
     if df_p.empty:
         continue
     ps_val   = ps_simul[plage]
     dep_mask = df_p["puissance_kw_sim"] > ps_val
     n_dep    = int(dep_mask.sum())
     pmax_sim = round(float(df_p["puissance_kw_sim"].max()), 1)
-    dep_max  = round(max(0.0, float(df_p["puissance_kw_sim"].max()) - ps_val), 1)
-    # CMDPS estimée (BT>36 : 12.41 €/h ; HTA : approx via sqrt)
-    if domaine == "BT > 36 kVA" and n_dep > 0:
-        cmdps_est = round(12.41 * n_dep * df_opt.attrs.get("facteur_annualisation", 1.0), 0)
-    elif domaine == "HTA" and n_dep > 0 and plage in bi_sim:
-        deltas    = np.maximum(0, df_p["puissance_kw_sim"].values - ps_val)
-        cmdps_est = round(2 * 0.04 * bi_sim[plage] * float(np.sqrt(np.sum(deltas**2))) *
-                          df_opt.attrs.get("facteur_annualisation", 1.0), 0)
-    else:
-        cmdps_est = 0
+    dep_max  = round(max(0.0, pmax_sim - ps_val), 1)
 
-    niveau = "🟢 Aucun" if n_dep == 0 else ("🟡 Faible" if n_dep < 50 else ("🟠 Modéré" if n_dep < 200 else "🔴 Élevé"))
-    rows_risque.append({
-        "Plage":          plage,
-        "PS simulée":     f"{ps_val} kVA",
-        "Pmax simulée":   f"{pmax_sim} kW",
-        "Dépass. max":    f"+{dep_max} kW" if dep_max > 0 else "—",
-        "Heures dépass.": n_dep,
-        "CMDPS estimée":  f"{cmdps_est:,.0f} €/an" if cmdps_est > 0 else "—",
-        "Niveau de risque": niveau,
-    })
+    if domaine == "BT ≤ 36 kVA":
+        # Linky : coupure immédiate, pas de CMDPS
+        if n_dep > 0:
+            niveau   = "🔴 Coupure" if n_dep >= 200 else ("🟠 Coupure" if n_dep >= 50 else "🟡 Coupure")
+            dep_info = f"⚡ +{dep_max} kW → Coupure"
+            cmd_info = "⚡ Coupure (pas de CMDPS)"
+        else:
+            niveau   = "🟢 OK"
+            dep_info = "—"
+            cmd_info = "—"
+        rows_risque.append({
+            "Plage": plage, "PS simulée": f"{ps_val} kVA", "Pmax simulée": f"{pmax_sim} kW",
+            "Dépassement": dep_info, "Heures coupure": n_dep,
+            "Conséquence": cmd_info, "Niveau": niveau,
+        })
+    else:
+        # BT>36 / HTA : dépassement possible, CMDPS facturée
+        if domaine == "BT > 36 kVA" and n_dep > 0:
+            cmdps_est = round(12.41 * n_dep * fact_ann, 0)
+        elif domaine == "HTA" and n_dep > 0 and plage in bi_sim:
+            deltas    = np.maximum(0, df_p["puissance_kw_sim"].values - ps_val)
+            cmdps_est = round(2 * 0.04 * bi_sim[plage] * float(np.sqrt(np.sum(deltas**2))) * fact_ann, 0)
+        else:
+            cmdps_est = 0
+        niveau = "🟢 Aucun" if n_dep == 0 else ("🟡 Faible" if n_dep < 50 else ("🟠 Modéré" if n_dep < 200 else "🔴 Élevé"))
+        rows_risque.append({
+            "Plage": plage, "PS simulée": f"{ps_val} kVA", "Pmax simulée": f"{pmax_sim} kW",
+            "Dépass. max": f"+{dep_max} kW" if dep_max > 0 else "—",
+            "Heures dépass.": n_dep,
+            "CMDPS estimée": f"{cmdps_est:,.0f} €/an" if cmdps_est > 0 else "—",
+            "Niveau de risque": niveau,
+        })
 
 with col_risq2:
+    if domaine == "BT ≤ 36 kVA":
+        st.warning(
+            "⚡ **BT ≤ 36 kVA — Linky : aucun dépassement de PS possible.**\n\n"
+            "Le compteur Linky coupe **immédiatement** l'alimentation si la puissance "
+            "dépasse la PS souscrite. Il n'y a **pas de CMDPS** pour ce domaine — "
+            "la conséquence est une **interruption de fourniture**, pas une pénalité."
+        )
+
     if rows_risque:
         df_risque = pd.DataFrame(rows_risque)
 
         def style_risque(row):
-            n = str(row.get("Niveau de risque", ""))
-            # Couleurs sur le texte (compatibles fond noir et fond blanc)
-            if "🔴" in n:
-                return ["color: #FF5252; font-weight: bold"] * len(row)
-            if "🟠" in n:
-                return ["color: #FF9800; font-weight: bold"] * len(row)
-            if "🟡" in n:
-                return ["color: #FFD600; font-weight: bold"] * len(row)
+            niv_col = "Niveau" if "Niveau" in row.index else "Niveau de risque"
+            n = str(row.get(niv_col, ""))
+            if "🔴" in n: return ["color: #FF5252; font-weight: bold"] * len(row)
+            if "🟠" in n: return ["color: #FF9800; font-weight: bold"] * len(row)
+            if "🟡" in n: return ["color: #FFD600; font-weight: bold"] * len(row)
             return ["color: #69F0AE; font-weight: bold"] * len(row)
 
         st.dataframe(df_risque.style.apply(style_risque, axis=1),
                      use_container_width=True, hide_index=True)
 
-        # Graphique : distribution des dépassements par plage
-        plages_dep = [r for r in rows_risque if r["Heures dépass."] > 0]
-        if plages_dep:
-            fig_risque = go.Figure()
-            for r in rows_risque:
-                p     = r["Plage"]
-                ps_v  = ps_simul[p]
-                df_p  = df_sim[df_sim["plage"] == p]
-                if df_p.empty: continue
-                vals  = df_p["puissance_kw_sim"].values
-                dep   = vals[vals > ps_v] - ps_v
-                if len(dep) == 0: continue
-                fig_risque.add_trace(go.Histogram(
-                    x=dep, name=p,
-                    marker_color=COULEURS_PLAGES.get(p, "#888"),
-                    opacity=0.7, nbinsx=20,
-                ))
-            fig_risque.update_layout(
-                barmode="overlay",
-                title=f"Distribution des dépassements — hausse conso +{hausse_pct}%, écart PS {delta_ps:+d} kVA",
-                xaxis_title="Dépassement (kW au-dessus de la PS)",
-                yaxis_title="Nombre d'heures",
-                height=280,
-                legend=dict(orientation="h", yanchor="bottom", y=1.02),
-            )
-            st.plotly_chart(fig_risque, use_container_width=True)
-    else:
-        st.info("Aucun dépassement dans la configuration actuelle.")
+        # Histogramme (BT>36 et HTA seulement — BT≤36 n'a pas de dépassement possible)
+        if domaine != "BT ≤ 36 kVA":
+            plages_dep = [r for r in rows_risque if r["Heures dépass."] > 0]
+            if plages_dep:
+                fig_risque = go.Figure()
+                for r in rows_risque:
+                    p    = r["Plage"]
+                    ps_v = ps_simul[p]
+                    dfp  = df_sim[df_sim["plage"] == p]
+                    if dfp.empty: continue
+                    dep  = dfp["puissance_kw_sim"].values
+                    dep  = dep[dep > ps_v] - ps_v
+                    if len(dep) == 0: continue
+                    fig_risque.add_trace(go.Histogram(
+                        x=dep, name=p, marker_color=COULEURS_PLAGES.get(p, "#888"),
+                        opacity=0.7, nbinsx=20,
+                    ))
+                fig_risque.update_layout(
+                    barmode="overlay",
+                    title=f"Distribution des dépassements — +{hausse_pct}% conso, PS {delta_ps:+d} kVA",
+                    xaxis_title="Dépassement (kW au-dessus de la PS souscrite)",
+                    yaxis_title="Nombre d'heures",
+                    height=280,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                )
+                st.plotly_chart(fig_risque, use_container_width=True)
+            else:
+                st.success("✅ Aucun dépassement dans cette configuration.")
 
 st.divider()
 
