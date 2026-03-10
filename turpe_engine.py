@@ -424,19 +424,16 @@ def _construire_cache(
         bi_ordre = [bi[p] for p in ordre]
         cs_energie = sum((ci[p] / 100) * energies.get(p, 0) * fact_ann for p in PLAGES_BT_SUP)
 
-        # Tableaux triés par plage pour searchsorted O(log n)
         pw_plage: Dict[str, np.ndarray] = {
             p: np.sort(df[df["plage"] == p]["puissance_kw"].dropna().values)
             for p in PLAGES_BT_SUP
         }
-        # Tableaux triés par (mois, plage) pour le capping mensuel BT>36
         pw_mois_plage_bt: Dict[int, Dict[str, np.ndarray]] = {}
         for mois, grp_m in df.groupby(df["timestamp"].dt.month):
-            pw_mois_plage_bt[mois] = {}
-            for p in PLAGES_BT_SUP:
-                vals = grp_m[grp_m["plage"] == p]["puissance_kw"].dropna().values
-                pw_mois_plage_bt[mois][p] = np.sort(vals)
-        # Énergie mensuelle moyenne (pour estimer la facture mensuelle dans le cap)
+            pw_mois_plage_bt[mois] = {
+                p: np.sort(grp_m[grp_m["plage"] == p]["puissance_kw"].dropna().values)
+                for p in PLAGES_BT_SUP
+            }
         cs_energie_m = cs_energie / 12.0
         cache.update({
             "bi": bi, "ci": ci, "ordre": ordre, "bi_ordre": bi_ordre,
@@ -479,8 +476,7 @@ def _cout_depuis_cache(cache: Dict, puissances_souscrites: Dict[str, float]) -> 
         cs = cs_puissance + cache["cs_energie"]
 
         # CMDPS HTA : sqrt(sum(deltas²)) par mois/plage via searchsorted
-        # CMDPS HTA : formule TURPE 7 délibération 2025-78 p.10
-        # CMDPS = 2 × Σ_mois Σ_plage [ 0.04 × bᵢ × √(Σ_t ΔPᵢ_t²) ]
+        # CMDPS HTA : 2 × Σ_mois Σ_plage [0.04 × bᵢ × √(Σ_t ΔPᵢ_t²)] — délibération 2025-78
         cmdps = 0.0
         for (mois, plage), arr in cache["pw_mois_plage"].items():
             ps  = puissances_souscrites.get(plage, 0)
@@ -488,7 +484,7 @@ def _cout_depuis_cache(cache: Dict, puissances_souscrites: Dict[str, float]) -> 
             if idx < len(arr):
                 deltas = arr[idx:] - ps
                 cmdps += 0.04 * bi[plage] * np.sqrt(np.dot(deltas, deltas))
-        cmdps *= 2.0 * fact_ann   # ×2 obligatoire (délibération 2025-78)
+        cmdps *= 2.0 * fact_ann   # ×2 obligatoire
 
     elif domaine == "BT > 36 kVA":
         ordre    = cache["ordre"]
@@ -501,42 +497,28 @@ def _cout_depuis_cache(cache: Dict, puissances_souscrites: Dict[str, float]) -> 
 
         cs = cs_puissance + cache["cs_energie"]
 
-        # CMDPS BT>36 : 12.41 €/h × nb heures dépassement, avec capping mensuel
-        # Règle TURPE 7 : si CMDPS_mois > 30% facture_mois ET > 25×tarif_PS_supp
-        # → cap à max(30%·facture_mois, 25×tarif_PS_supp) — sur demande client
-        # Implémenté automatiquement car représente le meilleur cas pour le client
-        bi_bt = cache["bi"]
+        # CMDPS BT>36 : 12.41€/h × heures dépassement, avec capping mensuel TURPE 7
+        bi_bt    = cache["bi"]
         ordre_bt = cache["ordre"]
-        # Tarif PS supplémentaire annuel (€/kVA·an) = bi·ΔPS pour chaque plage
-        tarif_ps_supp_an = sum(bi_bt[p] * puissances_souscrites[p] for p in cache["pw_plage"])
-        tarif_ps_supp_m  = tarif_ps_supp_an / 12.0
-
+        tarif_ps_supp_m = sum(bi_bt[p] * puissances_souscrites[p] for p in cache["pw_plage"]) / 12.0
+        bi_ord   = cache["bi_ordre"]
+        ps_tries = [puissances_souscrites[p] for p in ordre_bt]
+        cs_p_m   = (bi_ord[0] * ps_tries[0] + sum(
+            bi_ord[i] * (ps_tries[i] - ps_tries[i-1]) for i in range(1, len(ordre_bt))
+        )) / 12.0
+        facture_m = (cache["cg"] + cache["cc"]) / 12.0 + cs_p_m + cache.get("cs_energie_m", 0.0)
         cmdps = 0.0
-        for mois, groupe_m in cache["pw_mois_plage_bt"].items():
-            # CMDPS brute du mois
-            h_dep_m = 0
-            for p, arr_m in groupe_m.items():
-                ps = puissances_souscrites[p]
-                h_dep_m += len(arr_m) - np.searchsorted(arr_m, ps, side="right")
-            cmdps_m_brute = 12.41 * h_dep_m
-
-            # Facture mensuelle estimée (CG+CC annuels /12 + CS puissance mensuelle)
-            ps_tries_m = [puissances_souscrites[p] for p in ordre_bt]
-            bi_ordre_m = cache["bi_ordre"]
-            cs_p_m = bi_ordre_m[0] * ps_tries_m[0]
-            for idx in range(1, len(ordre_bt)):
-                cs_p_m += bi_ordre_m[idx] * (ps_tries_m[idx] - ps_tries_m[idx - 1])
-            facture_m = (cache["cg"] + cache["cc"]) / 12.0 + cs_p_m / 12.0 + cache.get("cs_energie_m", 0.0)
-
-            # Application du cap (double condition)
+        for mois, grp in cache["pw_mois_plage_bt"].items():
+            h_dep_m = sum(
+                len(arr) - np.searchsorted(arr, puissances_souscrites[p], side="right")
+                for p, arr in grp.items()
+            )
+            cmdps_m = 12.41 * h_dep_m
             cap_30  = 0.30 * facture_m
             cap_25x = 25.0 * tarif_ps_supp_m
-            if cmdps_m_brute > cap_30 and cmdps_m_brute > cap_25x:
+            if cmdps_m > cap_30 and cmdps_m > cap_25x:
                 cmdps_m = max(cap_30, cap_25x)
-            else:
-                cmdps_m = cmdps_m_brute
             cmdps += cmdps_m
-
         cmdps *= fact_ann
 
     else:  # BT ≤ 36 kVA
@@ -602,7 +584,7 @@ def calculer_cout_total(
         cs_energie = sum((ci[p] / 100) * energies.get(p, 0) * fact_ann for p in PLAGES_HTA)
         cs = cs_puissance + cs_energie
 
-        # CMDPS HTA : 2 × Σ_mois Σ_plage [ 0.04 × bᵢ × √(Σ_t ΔPᵢ_t²) ]
+        # CMDPS HTA : 2 × Σ_mois [...]
         col_p = "puissance_kw_10min" if "puissance_kw_10min" in df.columns else "puissance_kw"
         cmdps = 0.0
         for (_, plage), groupe in df.groupby([df["timestamp"].dt.month, "plage"]):
@@ -610,7 +592,7 @@ def calculer_cout_total(
             deltas = np.maximum(0, groupe[col_p].dropna().values - ps)
             if deltas.sum() > 0:
                 cmdps += 0.04 * bi[plage] * np.sqrt(np.sum(deltas ** 2))
-        cmdps *= 2.0 * fact_ann   # ×2 obligatoire (délibération 2025-78)
+        cmdps *= 2.0 * fact_ann   # ×2 obligatoire
 
     elif domaine == "BT > 36 kVA":
         bi = BT_SUP_BI[fta]
@@ -627,24 +609,20 @@ def calculer_cout_total(
         cs_energie = sum((ci[p] / 100) * energies.get(p, 0) * fact_ann for p in PLAGES_BT_SUP)
         cs = cs_puissance + cs_energie
 
-        # CMDPS BT>36 avec capping mensuel (double condition TURPE 7)
-        tarif_ps_supp_an = sum(bi[p] * puissances_souscrites[p] for p in PLAGES_BT_SUP)
-        tarif_ps_supp_m  = tarif_ps_supp_an / 12.0
-        # cs_puissance déjà calculé ci-dessus
-        facture_m_base = (cg + cc) / 12.0 + cs_puissance / 12.0
-
+        # CMDPS BT>36 avec capping mensuel TURPE 7
+        tarif_ps_supp_m = sum(bi[p] * puissances_souscrites[p] for p in PLAGES_BT_SUP) / 12.0
+        facture_m_base  = (cg + cc) / 12.0 + cs_puissance / 12.0
         cmdps = 0.0
         for mois, grp_m in df.groupby(df["timestamp"].dt.month):
-            h_dep_m = 0
-            for p, ps in puissances_souscrites.items():
-                h_dep_m += int((grp_m[grp_m["plage"] == p]["puissance_kw"] > ps).sum())
-            cmdps_m_brute = 12.41 * h_dep_m
+            h_dep_m = int(sum(
+                (grp_m[grp_m["plage"] == p]["puissance_kw"] > ps).sum()
+                for p, ps in puissances_souscrites.items()
+            ))
+            cmdps_m = 12.41 * h_dep_m
             cap_30  = 0.30 * facture_m_base
             cap_25x = 25.0 * tarif_ps_supp_m
-            if cmdps_m_brute > cap_30 and cmdps_m_brute > cap_25x:
+            if cmdps_m > cap_30 and cmdps_m > cap_25x:
                 cmdps_m = max(cap_30, cap_25x)
-            else:
-                cmdps_m = cmdps_m_brute
             cmdps += cmdps_m
         cmdps *= fact_ann
 
@@ -856,30 +834,50 @@ def optimiser_puissances(
                 scenarios.append(r)
         df_scenarios = pd.DataFrame(scenarios)
 
-    else:  # BT ≤ 36 kVA — balayage exhaustif, déjà rapide
-        p_max = df["puissance_kw"].max()
-        p_min = max(1, int(df["puissance_kw"].quantile(0.40)) - 1)
-        scenarios     = []
-        best_cost     = float("inf")
-        best_ps_val   = int(p_max)
+    else:  # BT ≤ 36 kVA — Linky : coupure immédiate dès que P > PS
+        # ── Contrainte réglementaire Linky ────────────────────────────────────
+        # Le compteur Linky coupe IMMÉDIATEMENT si la puissance dépasse la PS.
+        # Conséquence : toute PS < Pmax entraîne des interruptions de fourniture.
+        # L'optimiseur ne peut donc pas explorer en dessous de ceil(Pmax).
+        # Il n'y a pas de CMDPS pour ce domaine — la "pénalité" est une coupure,
+        # non modélisable financièrement → contrainte dure : PS ≥ ceil(Pmax).
+        p_max      = df["puissance_kw"].max()
+        p_min_safe = int(np.ceil(p_max))          # borne dure : aucune coupure
+        p_max_srch = p_min_safe + 20              # explorer jusqu'à +20 kVA au-dessus
 
-        for ps_val in range(p_min, int(p_max) + 2):
+        scenarios   = []
+        best_cost   = float("inf")
+        best_ps_val = p_min_safe
+
+        # ── Optimisation : uniquement PS ≥ ceil(Pmax) ─────────────────────────
+        for ps_val in range(p_min_safe, p_max_srch + 1):
             r = _cout_depuis_cache(cache, {"unique": ps_val})
-            r["ps_variee"] = ps_val
+            r["ps_variee"]    = ps_val
+            r["zone_coupure"] = False
             scenarios.append(r)
             if r["Total_HT"] < best_cost:
                 best_cost   = r["Total_HT"]
                 best_ps_val = ps_val
 
+        # ── Scénarios "zone coupure" en dessous de Pmax (pour graphique seult) ─
+        p_min_scen = max(1, int(df["puissance_kw"].quantile(0.40)) - 1)
+        for ps_val in range(p_min_scen, p_min_safe):
+            r = _cout_depuis_cache(cache, {"unique": ps_val})
+            r["ps_variee"]    = ps_val
+            r["zone_coupure"] = True   # ← PS insuffisante : Linky coupera
+            scenarios.append(r)
+
         meilleures_ps    = {"unique": best_ps_val}
         resultat_optimal = _cout_depuis_cache(cache, meilleures_ps)
 
+        # ── Non-régression ────────────────────────────────────────────────────
         if ps_actuelles is not None:
-            resultat_ref = _cout_depuis_cache(cache, ps_actuelles)
+            ps_act_safe = {"unique": max(p_min_safe, int(list(ps_actuelles.values())[0]))}
+            resultat_ref = _cout_depuis_cache(cache, ps_act_safe)
             if resultat_optimal["Total_HT"] >= resultat_ref["Total_HT"]:
-                meilleures_ps    = dict(ps_actuelles)
+                meilleures_ps    = ps_act_safe
                 resultat_optimal = resultat_ref
 
-        df_scenarios = pd.DataFrame(scenarios)
+        df_scenarios = pd.DataFrame(scenarios).sort_values("ps_variee").reset_index(drop=True)
 
     return resultat_optimal, df_scenarios
