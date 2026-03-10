@@ -425,14 +425,23 @@ def _construire_cache(
         cs_energie = sum((ci[p] / 100) * energies.get(p, 0) * fact_ann for p in PLAGES_BT_SUP)
 
         # Tableaux triés par plage pour searchsorted O(log n)
-        # dropna() obligatoire : NaN trié en fin de tableau fausse searchsorted
         pw_plage: Dict[str, np.ndarray] = {
             p: np.sort(df[df["plage"] == p]["puissance_kw"].dropna().values)
             for p in PLAGES_BT_SUP
         }
+        # Tableaux triés par (mois, plage) pour le capping mensuel BT>36
+        pw_mois_plage_bt: Dict[int, Dict[str, np.ndarray]] = {}
+        for mois, grp_m in df.groupby(df["timestamp"].dt.month):
+            pw_mois_plage_bt[mois] = {}
+            for p in PLAGES_BT_SUP:
+                vals = grp_m[grp_m["plage"] == p]["puissance_kw"].dropna().values
+                pw_mois_plage_bt[mois][p] = np.sort(vals)
+        # Énergie mensuelle moyenne (pour estimer la facture mensuelle dans le cap)
+        cs_energie_m = cs_energie / 12.0
         cache.update({
             "bi": bi, "ci": ci, "ordre": ordre, "bi_ordre": bi_ordre,
             "cs_energie": cs_energie, "pw_plage": pw_plage,
+            "pw_mois_plage_bt": pw_mois_plage_bt, "cs_energie_m": cs_energie_m,
         })
 
     else:  # BT ≤ 36 kVA
@@ -470,15 +479,16 @@ def _cout_depuis_cache(cache: Dict, puissances_souscrites: Dict[str, float]) -> 
         cs = cs_puissance + cache["cs_energie"]
 
         # CMDPS HTA : sqrt(sum(deltas²)) par mois/plage via searchsorted
+        # CMDPS HTA : formule TURPE 7 délibération 2025-78 p.10
+        # CMDPS = 2 × Σ_mois Σ_plage [ 0.04 × bᵢ × √(Σ_t ΔPᵢ_t²) ]
         cmdps = 0.0
         for (mois, plage), arr in cache["pw_mois_plage"].items():
             ps  = puissances_souscrites.get(plage, 0)
-            # Éléments > ps : arr[idx_start:]
             idx = np.searchsorted(arr, ps, side="right")
             if idx < len(arr):
                 deltas = arr[idx:] - ps
                 cmdps += 0.04 * bi[plage] * np.sqrt(np.dot(deltas, deltas))
-        cmdps *= fact_ann
+        cmdps *= 2.0 * fact_ann   # ×2 obligatoire (délibération 2025-78)
 
     elif domaine == "BT > 36 kVA":
         ordre    = cache["ordre"]
@@ -491,12 +501,43 @@ def _cout_depuis_cache(cache: Dict, puissances_souscrites: Dict[str, float]) -> 
 
         cs = cs_puissance + cache["cs_energie"]
 
-        # CMDPS BT>36 : nb heures dépassement × 12.41, searchsorted O(log n)
-        heures_dep = 0
-        for p, arr in cache["pw_plage"].items():
-            ps  = puissances_souscrites[p]
-            heures_dep += len(arr) - np.searchsorted(arr, ps, side="right")
-        cmdps = 12.41 * heures_dep * fact_ann
+        # CMDPS BT>36 : 12.41 €/h × nb heures dépassement, avec capping mensuel
+        # Règle TURPE 7 : si CMDPS_mois > 30% facture_mois ET > 25×tarif_PS_supp
+        # → cap à max(30%·facture_mois, 25×tarif_PS_supp) — sur demande client
+        # Implémenté automatiquement car représente le meilleur cas pour le client
+        bi_bt = cache["bi"]
+        ordre_bt = cache["ordre"]
+        # Tarif PS supplémentaire annuel (€/kVA·an) = bi·ΔPS pour chaque plage
+        tarif_ps_supp_an = sum(bi_bt[p] * puissances_souscrites[p] for p in cache["pw_plage"])
+        tarif_ps_supp_m  = tarif_ps_supp_an / 12.0
+
+        cmdps = 0.0
+        for mois, groupe_m in cache["pw_mois_plage_bt"].items():
+            # CMDPS brute du mois
+            h_dep_m = 0
+            for p, arr_m in groupe_m.items():
+                ps = puissances_souscrites[p]
+                h_dep_m += len(arr_m) - np.searchsorted(arr_m, ps, side="right")
+            cmdps_m_brute = 12.41 * h_dep_m
+
+            # Facture mensuelle estimée (CG+CC annuels /12 + CS puissance mensuelle)
+            ps_tries_m = [puissances_souscrites[p] for p in ordre_bt]
+            bi_ordre_m = cache["bi_ordre"]
+            cs_p_m = bi_ordre_m[0] * ps_tries_m[0]
+            for idx in range(1, len(ordre_bt)):
+                cs_p_m += bi_ordre_m[idx] * (ps_tries_m[idx] - ps_tries_m[idx - 1])
+            facture_m = (cache["cg"] + cache["cc"]) / 12.0 + cs_p_m / 12.0 + cache.get("cs_energie_m", 0.0)
+
+            # Application du cap (double condition)
+            cap_30  = 0.30 * facture_m
+            cap_25x = 25.0 * tarif_ps_supp_m
+            if cmdps_m_brute > cap_30 and cmdps_m_brute > cap_25x:
+                cmdps_m = max(cap_30, cap_25x)
+            else:
+                cmdps_m = cmdps_m_brute
+            cmdps += cmdps_m
+
+        cmdps *= fact_ann
 
     else:  # BT ≤ 36 kVA
         ps_unique    = list(puissances_souscrites.values())[0]
@@ -561,14 +602,15 @@ def calculer_cout_total(
         cs_energie = sum((ci[p] / 100) * energies.get(p, 0) * fact_ann for p in PLAGES_HTA)
         cs = cs_puissance + cs_energie
 
+        # CMDPS HTA : 2 × Σ_mois Σ_plage [ 0.04 × bᵢ × √(Σ_t ΔPᵢ_t²) ]
         col_p = "puissance_kw_10min" if "puissance_kw_10min" in df.columns else "puissance_kw"
         cmdps = 0.0
         for (_, plage), groupe in df.groupby([df["timestamp"].dt.month, "plage"]):
             ps     = puissances_souscrites.get(plage, 0)
-            deltas = np.maximum(0, groupe[col_p].values - ps)
+            deltas = np.maximum(0, groupe[col_p].dropna().values - ps)
             if deltas.sum() > 0:
                 cmdps += 0.04 * bi[plage] * np.sqrt(np.sum(deltas ** 2))
-        cmdps *= fact_ann
+        cmdps *= 2.0 * fact_ann   # ×2 obligatoire (délibération 2025-78)
 
     elif domaine == "BT > 36 kVA":
         bi = BT_SUP_BI[fta]
@@ -585,11 +627,26 @@ def calculer_cout_total(
         cs_energie = sum((ci[p] / 100) * energies.get(p, 0) * fact_ann for p in PLAGES_BT_SUP)
         cs = cs_puissance + cs_energie
 
-        heures_dep = sum(
-            (df[df["plage"] == p]["puissance_kw"] > ps).sum()
-            for p, ps in puissances_souscrites.items()
-        )
-        cmdps = 12.41 * heures_dep * fact_ann
+        # CMDPS BT>36 avec capping mensuel (double condition TURPE 7)
+        tarif_ps_supp_an = sum(bi[p] * puissances_souscrites[p] for p in PLAGES_BT_SUP)
+        tarif_ps_supp_m  = tarif_ps_supp_an / 12.0
+        # cs_puissance déjà calculé ci-dessus
+        facture_m_base = (cg + cc) / 12.0 + cs_puissance / 12.0
+
+        cmdps = 0.0
+        for mois, grp_m in df.groupby(df["timestamp"].dt.month):
+            h_dep_m = 0
+            for p, ps in puissances_souscrites.items():
+                h_dep_m += int((grp_m[grp_m["plage"] == p]["puissance_kw"] > ps).sum())
+            cmdps_m_brute = 12.41 * h_dep_m
+            cap_30  = 0.30 * facture_m_base
+            cap_25x = 25.0 * tarif_ps_supp_m
+            if cmdps_m_brute > cap_30 and cmdps_m_brute > cap_25x:
+                cmdps_m = max(cap_30, cap_25x)
+            else:
+                cmdps_m = cmdps_m_brute
+            cmdps += cmdps_m
+        cmdps *= fact_ann
 
     else:  # BT ≤ 36 kVA
         ps_unique = list(puissances_souscrites.values())[0]
