@@ -124,6 +124,45 @@ def _mpl_projection(nb_annees, eco_annuelle) -> bytes:
     plt.close(fig)
     return buf.getvalue()
 
+def _mpl_sensibilite(df_scenarios, resultat_optimal, couleurs) -> bytes:
+    """Courbes de sensibilité coût vs PS par plage — matplotlib."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    plages = sorted(df_scenarios["plage_variee"].unique()) if "plage_variee" in df_scenarios.columns else []
+    if not plages:
+        fig, ax = plt.subplots(figsize=(9, 2.2))
+        ax.text(0.5, 0.5, "Données de sensibilité non disponibles",
+                ha="center", va="center", transform=ax.transAxes, fontsize=9)
+        buf = io.BytesIO(); fig.savefig(buf, format="png", dpi=110); plt.close(fig); return buf.getvalue()
+
+    fig, ax = plt.subplots(figsize=(9, 2.6))
+    for plage in plages:
+        df_s  = df_scenarios[df_scenarios["plage_variee"] == plage].sort_values("ps_variee")
+        color = couleurs.get(plage, "#888")
+        ax.plot(df_s["ps_variee"], df_s["Total_HT"],
+                color=color, linewidth=1.8, label=plage, marker="o", markersize=2.5)
+        ps_opt = resultat_optimal["puissances_souscrites"].get(plage, None)
+        if ps_opt is not None:
+            ax.axvline(ps_opt, color=color, linestyle=":", linewidth=0.9, alpha=0.8)
+            y_opt = df_s.loc[df_s["ps_variee"] == ps_opt, "Total_HT"]
+            if not y_opt.empty:
+                ax.scatter([ps_opt], [y_opt.values[0]], color=color, s=30, zorder=5)
+
+    ax.set_xlabel("Puissance souscrite (kVA)", fontsize=8)
+    ax.set_ylabel("Coût total HT (€/an)", fontsize=8)
+    ax.set_title("Sensibilité du coût TURPE+CTA selon la PS par plage", fontsize=9)
+    ax.legend(fontsize=7, loc="upper right", ncol=2)
+    ax.tick_params(labelsize=7)
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f"{v:,.0f}"))
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=130)
+    plt.close(fig)
+    return buf.getvalue()
+
 
 # ─────────────────────────────────────────────
 # HELPER : génération PDF avec reportlab
@@ -133,7 +172,7 @@ def generer_pdf(
     hc_debut, hc_fin,
     ps_actuelles, resultat_actuel, resultat_optimal,
     economie, economie_pct, economie_cta, economie_cta_pct,
-    nb_annees, resultats_fta,
+    nb_annees, resultats_fta, df_scenarios=None,
 ) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
@@ -404,45 +443,59 @@ def generer_pdf(
     story.append(KeepTogether([
         Paragraph("Détail des composantes TURPE + CTA — HT annualisés", s_h2),
         t_comp,
-        Spacer(1, 6),
+        Spacer(1, 3),
     ]))
 
-    # ── GRAPHIQUES — page 2 ───────────────────────────────────────────────────
+    # ── GRAPHIQUES — page 2 (4 graphiques compacts) ───────────────────────────
     story.append(PageBreak())
-    story.append(Paragraph(f"{nom_etude or 'Étude d\'optimisation'} — {datetime.now().strftime('%d/%m/%Y')}", s_date))
-    story.append(HRFlowable(width="100%", thickness=1, color=BLEU, spaceAfter=6))
+    story.append(Paragraph(
+        (nom_etude or "Étude d'optimisation") + " — " + datetime.now().strftime("%d/%m/%Y"),
+        s_date))
+    story.append(HRFlowable(width="100%", thickness=0.8, color=BLEU, spaceAfter=4))
 
-    # Hauteurs réduites pour tenir en une page
-    h_courbe = content_w * 2.6 / 9
-    h_barres = content_w * 2.5 / 9
-    h_proj   = content_w * 2.5 / 9
+    # Hauteur uniforme : 4 graphiques en une page
+    gh = content_w * 2.05 / 9
 
+    # 1. Courbe de charge
     png_courbe = _mpl_courbe_charge(df, COULEURS_PLAGES)
     story.append(KeepTogether([
         Paragraph("Courbe de charge par plage horosaisonnière", s_h2),
-        RLImage(io.BytesIO(png_courbe), width=content_w, height=h_courbe),
-        Spacer(1, 4),
+        RLImage(io.BytesIO(png_courbe), width=content_w, height=gh),
+        Spacer(1, 3),
     ]))
 
+    # 2. Comparaison composantes
     compo_graph_pdf  = ["CG", "CC", "CS", "CMDPS", "CTA_HT"]
     labels_graph_pdf = ["Gestion", "Comptage", "Soutirage", "Dépassement", "CTA HT"]
     png_compo = _mpl_composantes(
         labels_graph_pdf,
-        [resultat_actuel[c]        for c in compo_graph_pdf],
-        [resultat_optimal[c]       for c in compo_graph_pdf],
+        [resultat_actuel[c]  for c in compo_graph_pdf],
+        [resultat_optimal[c] for c in compo_graph_pdf],
         intermediaire=[resultat_fta_act_pdf[c] for c in compo_graph_pdf] if fta_change else None,
         label_inter=f"PS opt. ({fta})",
     )
     story.append(KeepTogether([
-        Paragraph("TURPE + CTA HT annualisé : actuel vs optimisé par composante", s_h2),
-        RLImage(io.BytesIO(png_compo), width=content_w, height=h_barres),
-        Spacer(1, 4),
+        Paragraph("TURPE + CTA HT : actuel vs optimisé par composante", s_h2),
+        RLImage(io.BytesIO(png_compo), width=content_w, height=gh),
+        Spacer(1, 3),
     ]))
 
+    # 3. Analyse de sensibilité
+    df_sc_pdf = df_scenarios if df_scenarios is not None else (
+        resultats_fta.get(fta_opt, {}).get("scenarios", None))
+    if df_sc_pdf is not None and "plage_variee" in df_sc_pdf.columns:
+        png_sens = _mpl_sensibilite(df_sc_pdf, resultat_optimal, COULEURS_PLAGES)
+        story.append(KeepTogether([
+            Paragraph("Sensibilité du coût TURPE+CTA selon la puissance souscrite", s_h2),
+            RLImage(io.BytesIO(png_sens), width=content_w, height=gh),
+            Spacer(1, 3),
+        ]))
+
+    # 4. Projection pluriannuelle
     png_proj = _mpl_projection(nb_annees, max(0, economie_cta))
     story.append(KeepTogether([
-        Paragraph(f"Économie annuelle HT — cumul sur {nb_annees} ans : {max(0, economie_cta) * nb_annees:,.0f} €", s_h2),
-        RLImage(io.BytesIO(png_proj), width=content_w, height=h_proj),
+        Paragraph(f"Projection sur {nb_annees} ans — économie cumulée : {max(0, economie_cta)*nb_annees:,.0f} €", s_h2),
+        RLImage(io.BytesIO(png_proj), width=content_w, height=gh),
     ]))
 
     # ── PIED DE PAGE ─────────────────────────────────────────────────────────
@@ -920,6 +973,110 @@ if "plage_variee" in df_scenarios.columns:
 st.divider()
 
 # ─────────────────────────────────────────────
+# SIMULATION DU RISQUE DE DÉPASSEMENT
+# ─────────────────────────────────────────────
+st.header("⚠️ Simulation du risque de dépassement")
+
+# Utilise la PS optimale + la courbe de charge classifiée avec FTA optimale
+ps_sim_opt  = resultat_optimal["puissances_souscrites"]
+bi_sim      = HTA_BI[fta_opt] if domaine == "HTA" else (BT_SUP_BI[fta_opt] if domaine == "BT > 36 kVA" else {})
+
+col_risq1, col_risq2 = st.columns([1, 2])
+with col_risq1:
+    hausse_pct = st.slider(
+        "📈 Simulation hausse de conso (%)", 0, 30, 0, step=5,
+        help="Simule une augmentation homothétique de la courbe de charge"
+    )
+    ps_reduc   = st.slider(
+        "🔽 Simulation réduction de PS (kVA)", 0, 20, 0, step=1,
+        help="Simule une réduction de toutes les PS optimales"
+    )
+
+# Courbe simulée
+facteur_sim = 1.0 + hausse_pct / 100.0
+df_sim      = df_opt.copy()
+df_sim["puissance_kw_sim"] = df_sim["puissance_kw"] * facteur_sim
+
+ps_simul = {p: max(1, int(v) - ps_reduc) for p, v in ps_sim_opt.items()}
+
+# Calcul dépassements par plage
+rows_risque = []
+for plage in ps_simul:
+    df_p     = df_sim[df_sim["plage"] == plage]
+    if df_p.empty:
+        continue
+    ps_val   = ps_simul[plage]
+    dep_mask = df_p["puissance_kw_sim"] > ps_val
+    n_dep    = int(dep_mask.sum())
+    pmax_sim = round(float(df_p["puissance_kw_sim"].max()), 1)
+    dep_max  = round(max(0.0, float(df_p["puissance_kw_sim"].max()) - ps_val), 1)
+    # CMDPS estimée (BT>36 : 12.41 €/h ; HTA : approx via sqrt)
+    if domaine == "BT > 36 kVA" and n_dep > 0:
+        cmdps_est = round(12.41 * n_dep * df_opt.attrs.get("facteur_annualisation", 1.0), 0)
+    elif domaine == "HTA" and n_dep > 0 and plage in bi_sim:
+        deltas    = np.maximum(0, df_p["puissance_kw_sim"].values - ps_val)
+        cmdps_est = round(2 * 0.04 * bi_sim[plage] * float(np.sqrt(np.sum(deltas**2))) *
+                          df_opt.attrs.get("facteur_annualisation", 1.0), 0)
+    else:
+        cmdps_est = 0
+
+    niveau = "🟢 Aucun" if n_dep == 0 else ("🟡 Faible" if n_dep < 50 else ("🟠 Modéré" if n_dep < 200 else "🔴 Élevé"))
+    rows_risque.append({
+        "Plage":          plage,
+        "PS simulée":     f"{ps_val} kVA",
+        "Pmax simulée":   f"{pmax_sim} kW",
+        "Dépass. max":    f"+{dep_max} kW" if dep_max > 0 else "—",
+        "Heures dépass.": n_dep,
+        "CMDPS estimée":  f"{cmdps_est:,.0f} €/an" if cmdps_est > 0 else "—",
+        "Niveau de risque": niveau,
+    })
+
+with col_risq2:
+    if rows_risque:
+        df_risque = pd.DataFrame(rows_risque)
+
+        def style_risque(row):
+            n = str(row.get("Niveau de risque", ""))
+            if "🔴" in n: return ["background-color: #FFCDD2"] * len(row)
+            if "🟠" in n: return ["background-color: #FFE0B2"] * len(row)
+            if "🟡" in n: return ["background-color: #FFF9C4"] * len(row)
+            return [""] * len(row)
+
+        st.dataframe(df_risque.style.apply(style_risque, axis=1),
+                     use_container_width=True, hide_index=True)
+
+        # Graphique : distribution des dépassements par plage
+        plages_dep = [r for r in rows_risque if r["Heures dépass."] > 0]
+        if plages_dep:
+            fig_risque = go.Figure()
+            for r in rows_risque:
+                p     = r["Plage"]
+                ps_v  = ps_simul[p]
+                df_p  = df_sim[df_sim["plage"] == p]
+                if df_p.empty: continue
+                vals  = df_p["puissance_kw_sim"].values
+                dep   = vals[vals > ps_v] - ps_v
+                if len(dep) == 0: continue
+                fig_risque.add_trace(go.Histogram(
+                    x=dep, name=p,
+                    marker_color=COULEURS_PLAGES.get(p, "#888"),
+                    opacity=0.7, nbinsx=20,
+                ))
+            fig_risque.update_layout(
+                barmode="overlay",
+                title=f"Distribution des dépassements — hausse conso +{hausse_pct}%, PS réduite −{ps_reduc} kVA",
+                xaxis_title="Dépassement (kW au-dessus de la PS)",
+                yaxis_title="Nombre d'heures",
+                height=280,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            )
+            st.plotly_chart(fig_risque, use_container_width=True)
+    else:
+        st.info("Aucun dépassement dans la configuration actuelle.")
+
+st.divider()
+
+# ─────────────────────────────────────────────
 # PROJECTION PLURIANNUELLE
 # ─────────────────────────────────────────────
 st.header("📆 Gains annuels et projection")
@@ -1029,6 +1186,7 @@ with col_dl3:
                     economie_cta=economie_cta, economie_cta_pct=economie_cta_pct,
                     nb_annees=nb_annees,
                     resultats_fta=resultats_fta,
+                    df_scenarios=df_scenarios,
                 )
                 st.session_state["pdf_bytes"] = pdf_bytes
                 st.success("✅ PDF généré !")
